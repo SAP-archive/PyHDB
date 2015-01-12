@@ -84,7 +84,11 @@ class OptionPart(with_metaclass(OptionPartMeta, Part)):
             if value is None:
                 continue
 
-            if typ == 3:
+            if typ == 1:
+                value = struct.pack('B', value)
+            elif typ == 2:
+                value = struct.pack('h', value)
+            elif typ == 3:
                 value = struct.pack('i', value)
             elif typ == 4:
                 value = struct.pack('l', value)
@@ -105,11 +109,17 @@ class OptionPart(with_metaclass(OptionPartMeta, Part)):
         options = {}
         for i in iter_range(argument_count):
             key, typ = struct.unpack('bb', payload.read(2))
+            
             if key not in cls.option_identifier:
-                continue
-            key = cls.option_identifier[key]
+                key = 'Unknown_%d' % key
+            else:
+                key = cls.option_identifier[key]            
 
-            if typ == 3:
+            if typ == 1:
+                value = struct.unpack('B', payload.read(1))[0]
+            elif typ == 2:
+                value = struct.unpack('h', payload.read(2))[0]
+            elif typ == 3:
                 value = struct.unpack('i', payload.read(4))[0]
             elif typ == 4:
                 value = struct.unpack('l', payload.read(8))[0]
