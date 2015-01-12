@@ -90,7 +90,7 @@ class OptionPart(with_metaclass(OptionPartMeta, Part)):
                 value = struct.pack('l', value)
             elif typ == 28:
                 value = struct.pack('?', value)
-            elif typ == 29:
+            elif typ == 29 or typ == 30:
                 value = value.encode('utf-8')
                 value = struct.pack('h', len(value)) + value
             else:
@@ -115,7 +115,7 @@ class OptionPart(with_metaclass(OptionPartMeta, Part)):
                 value = struct.unpack('l', payload.read(8))[0]
             elif typ == 28:
                 value = struct.unpack('?', payload.read(1))[0]
-            elif typ == 29:
+            elif typ == 29 or typ == 30:
                 length = struct.unpack('h', payload.read(2))[0]
                 value = payload.read(length).decode('utf-8')
             elif typ == 24:
