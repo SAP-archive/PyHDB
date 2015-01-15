@@ -91,7 +91,7 @@ class OptionPart(with_metaclass(OptionPartMeta, Part)):
             elif typ == 3:
                 value = struct.pack('i', value)
             elif typ == 4:
-                value = struct.pack('l', value)
+                value = struct.pack('q', value)
             elif typ == 28:
                 value = struct.pack('?', value)
             elif typ == 29 or typ == 30:
@@ -122,7 +122,7 @@ class OptionPart(with_metaclass(OptionPartMeta, Part)):
             elif typ == 3:
                 value = struct.unpack('i', payload.read(4))[0]
             elif typ == 4:
-                value = struct.unpack('l', payload.read(8))[0]
+                value = struct.unpack('q', payload.read(8))[0]
             elif typ == 28:
                 value = struct.unpack('?', payload.read(1))[0]
             elif typ == 29 or typ == 30:

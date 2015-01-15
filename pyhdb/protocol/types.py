@@ -112,7 +112,7 @@ class Int(_IntType):
 class BigInt(_IntType):
 
     code = 4
-    struct = struct.Struct("l")
+    struct = struct.Struct("q")
 
 class Decimal(Type):
 
