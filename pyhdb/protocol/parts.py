@@ -109,11 +109,11 @@ class OptionPart(with_metaclass(OptionPartMeta, Part)):
         options = {}
         for i in iter_range(argument_count):
             key, typ = struct.unpack('bb', payload.read(2))
-            
+
             if key not in cls.option_identifier:
                 key = 'Unknown_%d' % key
             else:
-                key = cls.option_identifier[key]            
+                key = cls.option_identifier[key]
 
             if typ == 1:
                 value = struct.unpack('B', payload.read(1))[0]
