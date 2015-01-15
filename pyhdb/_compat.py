@@ -32,6 +32,10 @@ else:
     unichr = chr
     iter_range = range
 
+# workaround for 'narrow' Python builds
+if sys.maxunicode <= 65535:
+    unichr = lambda n: ('\\U%08x' % n).decode('unicode-escape')
+
 def with_metaclass(meta, *bases):
     """
     Function from jinja2/_compat.py.
