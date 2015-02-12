@@ -32,7 +32,7 @@ class Message(object):
 
     # Documentation Notation:
     # I8 I4 UI4 UI4 I2 I1 B[9]
-    struct = struct.Struct('liIIhb9B')
+    struct = struct.Struct('qiIIhb9B')
 
     _session_id = None
     _packet_count = None
