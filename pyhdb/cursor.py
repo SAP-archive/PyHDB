@@ -14,6 +14,7 @@
 
 from collections import deque, namedtuple
 import binascii
+import re
 
 from pyhdb.protocol.base import RequestSegment
 from pyhdb.protocol.types import escape_values, by_type_code
@@ -408,3 +409,42 @@ class Cursor(object):
     def _check_closed(self):
         if self._connection is None or self._connection.closed:
             raise ProgrammingError("Cursor closed")
+
+
+_STRING_LITERAL = re.compile(r"'.*?'")
+_NAMED_PARAM = re.compile(r":([a-zA-Z]+)")
+
+
+def _detect_paramstyle(operation):
+    """Detect the notation of parameters in the given operation"""
+    op_without_strings = _STRING_LITERAL.sub("", operation)
+    if "?" in op_without_strings:
+        return "qmark"
+    elif _NAMED_PARAM.search(op_without_strings):
+        return "named"
+    elif "%s" in op_without_strings:
+        return "format"
+
+
+def _replace_in_non_strings(operation, find_regex, replace_func):
+    splitted = operation.split("'")
+    for i in range(0, len(splitted), 2):
+        splitted[i] = re.sub(find_regex, replace_func, splitted[i])
+    return '"'.join(splitted)
+
+
+def _insert_qmark_params(operation, parameters):
+    parameter_list = list(parameters)
+
+    def next_parameter(_):
+        # return them one by one
+        return parameter_list.pop(0)
+
+    return _replace_in_non_strings(operation, '\?', next_parameter)
+
+
+def _insert_named_params(operation, parameters):
+    def matching_parameter(match):
+        return parameters[match.group(1)]
+
+    return _replace_in_non_strings(operation, _NAMED_PARAM, matching_parameter)
