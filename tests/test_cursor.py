@@ -78,12 +78,24 @@ def test_format_operation_with_too_many_positional_parameters_raises():
         format_operation("INSERT INTO TEST VALUES(%s)", ('Hello World', 2))
 
 
-def test_format_operation_with_named_parameters():
+def test_format_operation_with_pyformat_parameters():
     """format_operation() is used for Python style parameter expansion"""
     assert format_operation(
         "INSERT INTO TEST VALUES(%(name)s, %(val)s)",
         {'name': 'Hello World', 'val': 2}
     ) == "INSERT INTO TEST VALUES('Hello World', 2)"
+
+
+def test_format_operation_with_qmark_parameters():
+    assert format_operation(
+        "INSERT INTO TEST VALUES(?)", ("'Hello World'",)
+    ) == "INSERT INTO TEST VALUES('''Hello World''')"
+
+
+def test_format_operation_with_named_parameters():
+    assert format_operation(
+        "INSERT INTO TEST VALUES(:hello)", dict(hello="'Hello World'")
+    ) == "INSERT INTO TEST VALUES('''Hello World''')"
 
 
 @pytest.mark.hanatest
@@ -113,12 +125,12 @@ def test_cursor_fetchall_multiple_rows(connection):
 
 # Test cases for different parameter style expansion
 #
-# paramstyle 	Meaning
+# paramstyle     Meaning
 # ---------------------------------------------------------
 # 1) qmark       Question mark style, e.g. ...WHERE name=?
 # 2) numeric     Numeric, positional style, e.g. ...WHERE name=:1
 # 3) named       Named style, e.g. ...WHERE name=:name  -> NOT IMPLEMENTED !!
-# 4) format 	   ANSI C printf format codes, e.g. ...WHERE name=%s
+# 4) format      ANSI C printf format codes, e.g. ...WHERE name=%s
 # 5) pyformat    Python extended format codes, e.g. ...WHERE name=%(name)s
 
 @pytest.mark.hanatest
@@ -303,4 +315,3 @@ def test_cursor_executemany(connection, test_table_1):
 #     ps = cursor.prepared_statement(statement_id)
 #
 #     assert ps.parameters == ((2, 4, 1, 0, '', 19, 0, 0), (1, 3, 1, 0, '', 10, 0, 0))
-
