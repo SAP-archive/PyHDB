@@ -24,8 +24,9 @@ def test_threadsafety():
     assert pyhdb.threadsafety == 2
 
 def test_paramstyle():
-    # TODO: Support also named format
-    assert pyhdb.paramstyle == "format"
+    assert "format" in pyhdb.paramstyle
+    assert "qmark" in pyhdb.paramstyle
+    assert "named" in pyhdb.paramstyle
 
 def test_exceptions():
     assert issubclass(pyhdb.Warning, Exception)
