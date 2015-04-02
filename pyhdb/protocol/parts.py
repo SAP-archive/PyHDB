@@ -161,7 +161,7 @@ class Command(Part):
 class ResultSet(Part):
     """
     This part contains the raw result data but without
-    structur informations the unpacking is not possible. In a
+    structure informations the unpacking is not possible. In a
     later step we will unpack the data.
     """
 
@@ -195,6 +195,18 @@ class Error(Part):
 
             errors.append(DatabaseError(errortext, code))
         return tuple(errors),
+
+class StatementId(Part):
+
+    kind = 10
+
+    def __init__(self, values):
+        self.values = values
+
+    @classmethod
+    def unpack_data(cls, argument_count, payload):
+        _sid = struct.unpack("8B", payload.read(8))
+        return _sid,
 
 class RowsAffected(Part):
 
@@ -330,6 +342,35 @@ class FetchSize(Part):
     @classmethod
     def unpack_data(cls, argument_count, payload):
         return self.struct.unpack(payload.read())
+
+class ParamMetadata(Part):
+
+    kind = 47
+
+    def __init__(self, values):
+        self.values = values
+
+    @classmethod
+    def unpack_data(cls, argument_count, payload):
+        values = []
+        for i in iter_range(argument_count):
+            param = struct.unpack("bbbbIhhI", payload.read(16))
+            if param[4] == 0xffffffff:
+                # no parameter name given
+                param_name = ''
+            else:
+                # offset of the parameter name set
+                payload.seek(param[4], 0)
+                length, = struct.unpack('B', payload.read(1))
+                param_name = payload.read(length).decode('utf-8')
+
+            # replace name offset with param name (or empty string)
+            param_metadata = list(param)
+            param_metadata[4] = param_name
+            param_metadata = tuple(param_metadata)
+
+            values.append(param_metadata)
+        return tuple(values),
 
 class ResultSetMetaData(Part):
 

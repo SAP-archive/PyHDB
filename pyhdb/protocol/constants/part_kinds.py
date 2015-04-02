@@ -12,4 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-AUTHENTICATION = 33
+AUTHENTICATION = 33 # Authentication data
+
+STATEMENTID = 10        # Prepared statement identifier
+STATEMENTCONTEXT = 39   # Statement visibility context
+PARAMETERMETADATA = 47  # Parameter metadata (type and length information)
+RESULTSETMETADATA = 48  # Result set metadata (type, length, and name information)

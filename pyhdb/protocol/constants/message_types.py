@@ -13,6 +13,8 @@
 # limitations under the License.
 
 EXECUTEDIRECT = 2
+PREPARE = 3
+EXECUTE = 13
 AUTHENTICATE = 65
 CONNECT = 66
 COMMIT = 67

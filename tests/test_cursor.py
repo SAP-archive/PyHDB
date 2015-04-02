@@ -175,3 +175,19 @@ def test_cursor_executemany(connection, test_table_1):
     cursor.execute("SELECT * FROM PYHDB_TEST_1")
     result = cursor.fetchall()
     assert result == [('Statement 1',), ('Statement 2',)]
+
+
+@pytest.mark.hanatest
+def test_prepared(connection):
+    cursor = connection.cursor()
+
+    sql_to_prepare = 'select top ? * from test.employees where emp_no > ?'
+
+    statement_id = cursor.prepare(sql_to_prepare)
+
+    assert statement_id = cursor.prepared_statement()[0]
+
+    ps = cursor.prepared_statement(statement_id)
+
+    assert ps.param() == ((2, 4, 1, 0, '', 19, 0, 0), (1, 3, 1, 0, '', 10, 0, 0))
+

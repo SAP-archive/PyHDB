@@ -13,11 +13,12 @@
 # limitations under the License.
 
 from collections import deque
+import binascii
 
 from pyhdb.protocol.base import RequestSegment
 from pyhdb.protocol.types import escape_values, by_type_code
 from pyhdb.protocol.parts import Command, FetchSize, ResultSetId
-from pyhdb.protocol.constants import message_types, function_codes
+from pyhdb.protocol.constants import message_types, function_codes, part_kinds
 from pyhdb.exceptions import ProgrammingError, InterfaceError
 from pyhdb._compat import iter_range
 
@@ -25,6 +26,22 @@ def format_operation(operation, parameters=None):
     if parameters is not None:
         operation = operation % escape_values(parameters)
     return operation
+
+class PreparedStatement(object):
+
+    def __init__(self, parameters):
+        self._parameters = parameters
+        self._param_values = [None] * len (parameters)
+
+    def param(self, param_name=None):
+        if param_name:
+            for param in self._parameters:
+                if param[4] == param_name:
+                    return param
+            return None
+        else:
+            return self._parameters
+
 
 class Cursor(object):
 
@@ -38,6 +55,38 @@ class Cursor(object):
         self.description = None
         self.rownumber = None
         self.arraysize = 1
+        self._prepared_statements = {}
+
+    def prepared_statement(self, statement_id=None):
+        if statement_id:
+            return self._prepared_statements[statement_id]
+        else:
+            return self._prepared_statements.keys()
+
+    def prepare(self, statement):
+        self._check_closed()
+
+        response = self._connection.Message(
+            RequestSegment(
+                message_types.PREPARE,
+                Command(statement)
+            )
+        ).send()
+
+        _result = {}
+        for _part in response.segments[0].parts:
+            if _part.kind == part_kinds.STATEMENTID:
+                statement_id = binascii.hexlify(bytearray(_part.values))
+            elif _part.kind == part_kinds.STATEMENTCONTEXT:
+                _result['stmt_context'] = _part
+            elif _part.kind == part_kinds.PARAMETERMETADATA:
+                _result['params_metadata'] = _part.values
+            elif _part.kind == part_kinds.RESULTSETMETADATA:
+                _result['result_metadata'] = _part
+
+        self._prepared_statements[statement_id] = PreparedStatement(_result['params_metadata'])
+
+        return statement_id
 
     def execute(self, operation, parameters=None):
         self._check_closed()
