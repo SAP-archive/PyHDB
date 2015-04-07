@@ -18,6 +18,7 @@ from weakref import WeakValueDictionary
 
 from pyhdb.exceptions import InterfaceError
 from pyhdb._compat import with_metaclass
+from pyhdb.protocol.constants import part_kinds
 
 MAX_MESSAGE_SIZE = 2**17
 MESSAGE_HEADER_SIZE = 32
@@ -226,11 +227,14 @@ class ReplySegment(BaseSegment):
 
             num_segments += 1
 
-            if base_segment_header[4] == 2:
+            if base_segment_header[4] == 2: # Reply segment
                 yield ReplySegment.unpack(segment_header, segment_payload)
-            elif base_segment_header[4] == 5:
+            elif base_segment_header[4] == 5: # Error segment
                 error = ReplySegment.unpack(segment_header, segment_payload)
-                raise error.parts[0].errors[0]
+                if error.parts[0].kind == part_kinds.ROWSAFFECTED:
+                    raise Exception("Rows affected %s" % (error.parts[0].values,))
+                elif error.parts[0].kind == part_kinds.ERROR:
+                    raise error.parts[0].errors[0]
             else:
                 raise Exception("Invalid reply segment")
 

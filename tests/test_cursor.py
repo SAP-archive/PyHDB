@@ -185,7 +185,7 @@ def test_prepared(connection):
 
     statement_id = cursor.prepare(sql_to_prepare)
 
-    assert statement_id = cursor.prepared_statement()[0]
+    assert statement_id == cursor.prepared_statement()[0]
 
     ps = cursor.prepared_statement(statement_id)
 

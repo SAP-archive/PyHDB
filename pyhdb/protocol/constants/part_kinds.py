@@ -14,7 +14,12 @@
 
 AUTHENTICATION = 33 # Authentication data
 
+RESULTSET = 5           # Tabular result set data
+ERROR       = 6         # Error information
 STATEMENTID = 10        # Prepared statement identifier
+ROWSAFFECTED = 12       # Number of affected rows
+RESULTSETID = 13        # Result set identifier
+PARAMETERS = 32         # Parameter data
 STATEMENTCONTEXT = 39   # Statement visibility context
 PARAMETERMETADATA = 47  # Parameter metadata (type and length information)
 RESULTSETMETADATA = 48  # Result set metadata (type, length, and name information)

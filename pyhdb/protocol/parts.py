@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import struct
+from collections import namedtuple
 import pyhdb.cesu8
 from pyhdb.protocol.base import Part, PartMeta
 from pyhdb.exceptions import InterfaceError, DatabaseError
@@ -138,6 +139,23 @@ class OptionPart(with_metaclass(OptionPartMeta, Part)):
 
         return (options,)
 
+
+class Execute(Part):
+
+    def __init__(self, prepared_statement):
+        self.statement_id = prepared_statement.id
+        self.parameters = prepared_statement.param()
+
+    def pack_data(self):
+        payload = StatementId(self.statement_id)
+        # ParameterData(self.parameters)
+        return 1, payload
+
+    @classmethod
+    def unpack_data(cls, argument_count, payload):
+        execute = payload.read()
+        return execute.decode('cesu-8')
+
 class Command(Part):
     """
     This part contains the text of an SQL command.
@@ -200,13 +218,17 @@ class StatementId(Part):
 
     kind = 10
 
-    def __init__(self, values):
-        self.values = values
+    def __init__(self, statement_id):
+        self.statement_id = statement_id
+
+    def pack_data(self):
+        payload = bytearray(self.statement_id)
+        return 1, payload
 
     @classmethod
     def unpack_data(cls, argument_count, payload):
-        _sid = struct.unpack("8B", payload.read(8))
-        return _sid,
+        return payload.read(8), # string
+        #return struct.unpack("8B", payload.read(8)), # tuple
 
 class RowsAffected(Part):
 
@@ -251,6 +273,33 @@ class TopologyInformation(Part):
     def unpack_data(cls, argument_count, payload):
         # TODO
         return tuple()
+
+class Parameters(Part):
+    """
+    Prepared statement parameters' data
+    """
+
+    kind = 32
+
+    def __init__(self, parameters):
+        self.parameters = parameters
+
+    def pack_data(self):
+        payload = ''
+        for parameter in self.parameters:
+            typ, value = parameter[1], parameter[3]
+            if value is None:
+                pfield = struct.pack('b', 0)
+            else:
+                pfield = struct.pack('b', typ)
+                if typ == 3:
+                    pfield += struct.pack('i', value)
+                elif typ == 4:
+                    pfield += struct.pack('l', value)
+
+            #print typ, parameter[3], len(pfield)
+            payload += pfield
+        return 1, payload
 
 class Authentication(Part):
 
@@ -343,7 +392,7 @@ class FetchSize(Part):
     def unpack_data(cls, argument_count, payload):
         return self.struct.unpack(payload.read())
 
-class ParamMetadata(Part):
+class ParameterMetadata(Part):
 
     kind = 47
 
@@ -352,22 +401,29 @@ class ParamMetadata(Part):
 
     @classmethod
     def unpack_data(cls, argument_count, payload):
+        ParamMetadata = namedtuple('ParameterMetadata', 'options datatype mode id length fraction')
         values = []
-        for i in iter_range(argument_count):
+        for _ in iter_range(argument_count):
             param = struct.unpack("bbbbIhhI", payload.read(16))
             if param[4] == 0xffffffff:
                 # no parameter name given
-                param_name = ''
+                param_id = _
             else:
                 # offset of the parameter name set
                 payload.seek(param[4], 0)
                 length, = struct.unpack('B', payload.read(1))
-                param_name = payload.read(length).decode('utf-8')
+                param_id = payload.read(length).decode('utf-8')
 
-            # replace name offset with param name (or empty string)
+            # replace name offset with param name, if parameter names supplied,
+            # or parameter position (integer), if names not supplied)
             param_metadata = list(param)
-            param_metadata[4] = param_name
-            param_metadata = tuple(param_metadata)
+            param_metadata[4] = param_id
+            # remove unused fields
+            del param_metadata[3]
+            del param_metadata[6]
+
+            options,datatype,mode,name,length,fraction = param_metadata
+            param_metadata = ParamMetadata(options,datatype,mode,name,length,fraction)
 
             values.append(param_metadata)
         return tuple(values),

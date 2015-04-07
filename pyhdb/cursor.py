@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections import deque
+from collections import deque, namedtuple
 import binascii
 
 from pyhdb.protocol.base import RequestSegment
 from pyhdb.protocol.types import escape_values, by_type_code
-from pyhdb.protocol.parts import Command, FetchSize, ResultSetId
+from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, Parameters
 from pyhdb.protocol.constants import message_types, function_codes, part_kinds
 from pyhdb.exceptions import ProgrammingError, InterfaceError
 from pyhdb._compat import iter_range
@@ -29,19 +29,69 @@ def format_operation(operation, parameters=None):
 
 class PreparedStatement(object):
 
-    def __init__(self, parameters):
+    def __init__(self, connection, statement_id, parameters, resultmetadata):
+        self._connection = connection
+        self._statement_id = statement_id
         self._parameters = parameters
-        self._param_values = [None] * len (parameters)
-
-    def param(self, param_name=None):
-        if param_name:
-            for param in self._parameters:
-                if param[4] == param_name:
-                    return param
-            return None
+        self._resultmetadata = resultmetadata
+        if type(parameters[0][3]) == str:
+            # named parameters
+            self._param_values = {}
+            for param in parameters:
+                self._param_values[param[3]] = None
         else:
-            return self._parameters
+            # parameters by sequence
+            self._param_values = [None] * (1+len(parameters)) # sequence starts from 1, 2 ...; 0 not used
 
+    @property
+    def statement_id(self):
+        ''' statement id as byte array'''
+        return self._statement_id
+
+    @property
+    def statement_xid(self):
+        ''' statement id as hex string'''
+        return binascii.hexlify(bytearray(self._statement_id))
+
+    @property
+    def result_metadata(self):
+        return self._resultmetadata
+
+    def set_parameter_value(self, param_name, value):
+        ''' set parameter value'''
+        self._param_values[param_name] = value
+
+    @property
+    def parameter_value(self, param_name):
+        ''' get parameter value'''
+        if param_name:
+            return self._param_valuesp[param_name]
+        return None
+
+    @property
+    def parameters(self):
+        ''' get all parameters' values'''
+        Parameter = namedtuple('Parameter', 'id datatype length value')
+        _result = []
+        for param in self._parameters:
+            if type(param[3]) == int:
+                value_id = param[3]+1
+            else:
+                value_id = param[3]
+            _result.append(Parameter(param[3], param[1], param[4], self._param_values[value_id]))
+        return _result
+
+    def execute(self, parameters=None):
+        if self._connection is None or self._connection.closed:
+            raise ProgrammingError("Cursor closed")
+
+        # Request resultset
+        response = self._connection.Message(
+            RequestSegment(
+                message_types.EXECUTE,
+                Command('', parameters)
+            )
+        ).send()
 
 class Cursor(object):
 
@@ -57,11 +107,12 @@ class Cursor(object):
         self.arraysize = 1
         self._prepared_statements = {}
 
-    def prepared_statement(self, statement_id=None):
-        if statement_id:
-            return self._prepared_statements[statement_id]
-        else:
-            return self._prepared_statements.keys()
+    @property
+    def prepared_statement_ids(self):
+        return self._prepared_statements.keys()
+
+    def prepared_statement(self, statement_id):
+        return self._prepared_statements[statement_id]
 
     def prepare(self, statement):
         self._check_closed()
@@ -76,7 +127,7 @@ class Cursor(object):
         _result = {}
         for _part in response.segments[0].parts:
             if _part.kind == part_kinds.STATEMENTID:
-                statement_id = binascii.hexlify(bytearray(_part.values))
+                statement_id     = _part.statement_id
             elif _part.kind == part_kinds.STATEMENTCONTEXT:
                 _result['stmt_context'] = _part
             elif _part.kind == part_kinds.PARAMETERMETADATA:
@@ -84,9 +135,37 @@ class Cursor(object):
             elif _part.kind == part_kinds.RESULTSETMETADATA:
                 _result['result_metadata'] = _part
 
-        self._prepared_statements[statement_id] = PreparedStatement(_result['params_metadata'])
+        self._prepared_statements[statement_id] = PreparedStatement(self._connection, statement_id, _result['params_metadata'], _result['result_metadata'])
 
         return statement_id
+
+    def execute_prepared(self, prepared_statement):
+        self._check_closed()
+
+        # Request resultset
+        response = self._connection.Message(
+            RequestSegment(
+                message_types.EXECUTE,
+                (   StatementId(prepared_statement.statement_id),
+                    Parameters(prepared_statement.parameters)
+                )
+            )
+        ).send()
+
+        parts = response.segments[0].parts
+        function_code = response.segments[0].function_code
+        if function_code == function_codes.SELECT:
+            self._handle_prepared_select(parts, prepared_statement.result_metadata)
+        elif function_code in function_codes.DML:
+            self._handle_prepared_insert(parts)
+        elif function_code == function_codes.DDL:
+            # No additional handling is required
+            pass
+        else:
+            raise InterfaceError(
+                "Invalid or unsupported function code received"
+            )
+
 
     def execute(self, operation, parameters=None):
         self._check_closed()
@@ -120,12 +199,10 @@ class Cursor(object):
         for _parameters in parameters:
             self.execute(statement, _parameters)
 
-    def _handle_select(self, parts):
-        self.rowcount = -1
-
+    def _handle_result_metadata(self, result_metadata):
         description = []
         column_types = []
-        for column in parts[0].columns:
+        for column in result_metadata.columns:
             description.append(
                 (column[8], column[1], None, column[3], column[2], None,
                  column[0] & 0b10)
@@ -137,8 +214,34 @@ class Cursor(object):
                 )
             column_types.append(by_type_code[column[1]])
 
-        self.description = tuple(description)
-        self._column_types = tuple(column_types)
+        return tuple(description), tuple(column_types)
+
+    def _handle_prepared_select(self, parts, result_metadata):
+
+        self.rowcount = -1
+
+        # result metadata
+        self.description, self._column_types = self._handle_result_metadata(result_metadata)
+
+        for part in parts:
+            if part.kind == part_kinds.RESULTSETID:
+                self._id = part.value
+            if part.kind == part_kinds.RESULTSET:
+                # Cleanup buffer
+                del self._buffer
+                self._buffer = deque()
+
+                for row in self._unpack_rows(part.payload, part.rows):
+                    self._buffer.append(row)
+
+                self._received_last_resultset_part = part.attribute & 1
+                self._executed = True
+
+    def _handle_select(self, parts):
+        self.rowcount = -1
+
+        # result metadata
+        self.description, self._column_types = self._handle_result_metadata(parts[0])
 
         self._id = parts[1].value
 
