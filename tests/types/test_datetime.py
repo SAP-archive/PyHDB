@@ -63,3 +63,12 @@ def test_unpack_timestamp(input, expected):
 ])
 def test_escape_timestamp(input, expected):
     assert types.Timestamp.to_sql(input) == expected
+
+@pytest.mark.parametrize("input,expected", [
+    (date(2014,  2, 18), 735284),
+    (date(1582, 10, 15), 577738),
+    (date(1582, 10,  4), 577737),
+    (date(   1,  1,  1), 1),
+])
+def test_to_daydate(input, expected):
+    assert types.Date.to_daydate(input) == expected

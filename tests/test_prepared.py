@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
-import ConfigParser
-
 import pyhdb
 
+import ConfigParser
 from collections import namedtuple
+import datetime
 
 HANASystem = namedtuple('HANASystem', ['host', 'port', 'user', 'password'])
 
@@ -31,22 +31,25 @@ cursor = connection.cursor()
 #for line in r:
 #    print line
 
-# prepare w. placeholders
-#sql_to_prepare = 'select top ? * from test.employees where emp_no > 10500'
-#sql_to_prepare = 'select top 3 * from test.employees where emp_no > ?'
-sql_to_prepare = 'select top ? * from test.employees where emp_no > ?'
-
-statement_id = cursor.prepare(sql_to_prepare)
-#print 'sid raw:', statement_id
-
 # prepare named
 # sql_to_prepare = 'select top $top1 * from test.employees where emp_no > $empno'
 # statement_id = cursor.prepare(sql_to_prepare)
 ## DatabaseError: cannot use parameter variable: TOP1: line 1 col 12 (at pos 11)
 
+# prepare w. placeholders
+#sql_to_prepare = 'select top ? * from test.employees where emp_no > 10500'
+#sql_to_prepare = 'select top 3 * from test.employees where emp_no > ?'
+#sql_to_prepare = 'select top ? * from test.employees where emp_no > ? order by first_name'
+sql_to_prepare = "select top ? * from test.employees where emp_no > ? and first_name like ? order by birth_date"
+#sql_to_prepare = "select top ? * from test.employees where emp_no > ? and first_name like ? order by birth_date"
+#sql_to_prepare = 'insert into test.employees values (?,?,?,?,?,?)'
+#sql_to_prepare = 'insert into test.departments values (?,?)'
 
+statement_id = cursor.prepare(sql_to_prepare)
 ps = cursor.prepared_statement(statement_id)
-print 'sid:', ps.statement_xid
+print 'sid:', ps.statement_xid, statement_id
+for p in ps.parameters:
+    print p
 
 # sql 1
 #ps.set_parameter_value(1, 3)
@@ -55,19 +58,25 @@ print 'sid:', ps.statement_xid
 #ps.set_parameter_value(1, 10500)
 
 # sql 3
-ps.set_parameter_value(1, 5)
-ps.set_parameter_value(2, 11500)
+#ps.set_parameters([3, 5])
+#ps.set_parameter_value(1, 5)
+#ps.set_parameter_value(2, 11500)
+cursor.execute_prepared(ps, [7, 10500, 'Aamer'])
+#cursor.execute_prepared(ps, [500, datetime.date(1001, 1, 1), 'Lao', 'Tse', 'M', datetime.date(1002, 2, 2)])
+#cursor.execute_prepared(ps, [500, 728655, 'Lao', 'Tse', 'M', 735689])
+#cursor.execute_prepared(ps, ['t001', 'TestDep1'])
+'''
+sql_to_prepare = 'select top ? * from test.employees where birth_date = ?'
+statement_id = cursor.prepare(sql_to_prepare)
+ps = cursor.prepared_statement(statement_id)
+cursor.execute_prepared(ps, [3, datetime.date(1952, 2, 1)])
+'''
 
-for p in ps.parameters:
-    print p
-
-cursor.execute_prepared(ps)
 
 r = cursor.fetchall()
-
-print len(r)
-
-if len(r) < 33:
-    for line in r:
-        print line
-
+print cursor.rowcount
+for line in r:
+    print line
+#
+#r = cursor.rowcount
+#print r

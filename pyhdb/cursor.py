@@ -57,16 +57,14 @@ class PreparedStatement(object):
     def result_metadata(self):
         return self._resultmetadata
 
-    def set_parameter_value(self, param_name, value):
+    def set_parameter_value(self, param_id, value):
         ''' set parameter value'''
-        self._param_values[param_name] = value
+        self._param_values[param_id] = value
 
     @property
-    def parameter_value(self, param_name):
+    def parameter_value(self, param_id):
         ''' get parameter value'''
-        if param_name:
-            return self._param_valuesp[param_name]
-        return None
+        return self._param_values[param_id]
 
     @property
     def parameters(self):
@@ -81,17 +79,23 @@ class PreparedStatement(object):
             _result.append(Parameter(param[3], param[1], param[4], self._param_values[value_id]))
         return _result
 
-    def execute(self, parameters=None):
-        if self._connection is None or self._connection.closed:
-            raise ProgrammingError("Cursor closed")
+    def set_parameters(self, param_values):
+        if type(param_values) is list:
+            if (len(param_values) + 1) != len (self._param_values):
+                raise InterfaceError(
+                    "Prepared statement parameters expected %d supplied %d." % (len(self._param_values) - 1, len(param_values))
+                )
 
-        # Request resultset
-        response = self._connection.Message(
-            RequestSegment(
-                message_types.EXECUTE,
-                Command('', parameters)
+            for param_id, value in enumerate(param_values):
+                self._param_values[param_id + 1] = value
+        #elif type(param_values) is dict:
+        #    for param_id in param_values:
+        #        self._param_values[param_id] = param_values[param_id]
+        else:
+            raise InterfaceError(
+                "Prepared statement parameters supplied as %s, shall be list." % str(type(parameters))
             )
-        ).send()
+
 
 class Cursor(object):
 
@@ -125,6 +129,7 @@ class Cursor(object):
         ).send()
 
         _result = {}
+        _result['result_metadata'] = None # not sent for INSERT
         for _part in response.segments[0].parts:
             if _part.kind == part_kinds.STATEMENTID:
                 statement_id     = _part.statement_id
@@ -139,8 +144,11 @@ class Cursor(object):
 
         return statement_id
 
-    def execute_prepared(self, prepared_statement):
+    def execute_prepared(self, prepared_statement, parameters=None):
         self._check_closed()
+
+        if parameters:
+            prepared_statement.set_parameters(parameters)
 
         # Request resultset
         response = self._connection.Message(
@@ -226,7 +234,7 @@ class Cursor(object):
         for part in parts:
             if part.kind == part_kinds.RESULTSETID:
                 self._id = part.value
-            if part.kind == part_kinds.RESULTSET:
+            elif part.kind == part_kinds.RESULTSET:
                 # Cleanup buffer
                 del self._buffer
                 self._buffer = deque()
@@ -236,6 +244,27 @@ class Cursor(object):
 
                 self._received_last_resultset_part = part.attribute & 1
                 self._executed = True
+            elif part.kind == part_kinds.STATEMENTCONTEXT:
+                pass
+            else:
+                raise InterfaceError (
+                    "Prepared select statement response, unexpected part kind %d." % part.kind
+                )
+
+    def _handle_prepared_insert(self, parts):
+        for part in parts:
+            print part.kind
+            if part.kind == part_kinds.ROWSAFFECTED:
+                self.rowcount = part.values[0]
+            elif part.kind == part_kinds.TRANSACTIONFLAGS:
+                pass
+            elif part.kind == part_kinds.STATEMENTCONTEXT:
+                pass
+            else:
+                raise InterfaceError (
+                    "Prepared insert statement response, unexpected part kind %d." % part.kind
+                )
+        self._executed = True
 
     def _handle_select(self, parts):
         self.rowcount = -1

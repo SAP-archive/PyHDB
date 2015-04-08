@@ -84,26 +84,35 @@ class _IntType(Type):
     @classmethod
     def from_resultset(cls, payload):
         if payload.read(1) == b"\x01":
-            return cls.struct.unpack(payload.read(cls.struct.size))[0]
+            return cls._struct.unpack(payload.read(cls._struct.size))[0]
         else:
             # Value is Null
             return None
 
+    @classmethod
+    def prepare(cls, value):
+        if value is None:
+            pfield = struct.pack('b', 0)
+        else:
+            pfield = struct.pack('b', cls.code)
+            pfield += cls._struct.pack(value)
+        return pfield
+
 class TinyInt(_IntType):
 
     code = 1
-    struct = struct.Struct("B")
+    _struct = struct.Struct("B")
 
 class SmallInt(_IntType):
 
     code = 2
-    struct = struct.Struct("h")
+    _struct = struct.Struct("h")
 
 class Int(_IntType):
 
     code = 3
     python_type = int_types
-    struct = struct.Struct("i")
+    _struct = struct.Struct("i")
 
     @classmethod
     def to_sql(cls, value):
@@ -112,7 +121,7 @@ class Int(_IntType):
 class BigInt(_IntType):
 
     code = 4
-    struct = struct.Struct("l")
+    _struct = struct.Struct("l")
 
 class Decimal(Type):
 
@@ -147,27 +156,27 @@ class Decimal(Type):
 class Real(Type):
 
     code = 6
-    struct = struct.Struct("<f")
+    _struct = struct.Struct("<f")
 
     @classmethod
     def from_resultset(cls, payload):
         payload = payload.read(8)
         if payload == b"\xFF\xFF\xFF\xFF":
             return None
-        return cls.struct.unpack(payload)[0]
+        return cls._struct.unpack(payload)[0]
 
 class Double(_IntType):
 
     code = 7
     python_type = float
-    struct = struct.Struct("<d")
+    _struct = struct.Struct("<d")
 
     @classmethod
     def from_resultset(cls, payload):
         payload = payload.read(8)
         if payload == b"\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF":
             return None
-        return cls.struct.unpack(payload)[0]
+        return cls._struct.unpack(payload)[0]
 
     @classmethod
     def to_sql(cls, value):
@@ -210,6 +219,27 @@ class String(Type):
             value
         )
 
+    @classmethod
+    def prepare(cls, value, code=8):
+        pfield = struct.pack('b', code)
+        if value is None:
+            # length indicator
+            pfield += struct.pack('b', 255)
+        else:
+            value = value.encode('cesu-8')
+            length = len(value)
+            # length indicator
+            if length <= 245:
+                pfield += struct.pack('b', length)
+            elif length <= 32767:
+                pfield += struct.pack('b', 246)
+                pfield += struct.pack('h', length)
+            else:
+                pfield += struct.pack('b', 247)
+                pfield += struct.pack('i', length)
+            pfield += value
+        return pfield
+
 class Binary(Type):
 
     code = (12, 13, 33)
@@ -235,7 +265,7 @@ class Date(Type):
 
     code = 14
     python_type = date
-    struct = struct.Struct("hbh")
+    _struct = struct.Struct("hbh")
 
     @classmethod
     def from_resultset(cls, payload):
@@ -252,15 +282,73 @@ class Date(Type):
     def to_sql(cls, value):
         return "'%s'" % value.isoformat()
 
+    @classmethod
+    def prepare(cls, value):
+        if value is None:
+            pfield =  struct.pack('h', 0x8000)
+            pfield += struct.pack('b', 0)
+            pfield += struct.pack('h', 0)
+        else:
+            pfield = struct.pack('b', typ)
+            pfield += struct.pack('h', value.year)
+            pfield += struct.pack('b', value.month)
+            pfield += struct.pack('h', value.day)
+        return pfield
+
+    @classmethod
+    def to_daydate(cls, *argv):
+        '''
+        To Julian day (DAYDATE)
+        '''
+        argc = len(argv)
+        if argc == 3:
+            year = argv[0]
+            month = argv[1]
+            day = argv[2]
+        elif argc == 1:
+            dval = argv[0]
+            try:
+                year = dval.year
+                month = dval.month
+                day = dval.day
+            except:
+                raise InterfaceError(
+                    "Unsupported python date input: %s (%s)" % (str(dval), dval.__class__)
+                )
+        else:
+            raise InterfaceError(
+                "Date.to_datetime does not support %d arguments." % (argc)
+            )
+
+        TURN_OF_ERAS = 1721424
+
+        if month < 3:
+            year -= 1
+            month += 12
+
+        if ((year > 1582) or
+            (year == 1582 and month > 10) or
+            (year == 1582 and month == 10 and day >= 15)):
+            A = int (year / 100)
+            B = int (A / 4)
+            C = 2 - A + B
+        else:
+            C = 0
+
+        E = int (365.25 * (year + 4716))
+        F = int (30.6001 * (month + 1))
+        Z = C + day + E + F - 1524
+        return Z + 1 - TURN_OF_ERAS
+
 class Time(Type):
 
     code = 15
     python_type = time
-    struct = struct.Struct("bbH")
+    _struct = struct.Struct("bbH")
 
     @classmethod
     def from_resultset(cls, payload):
-        hour, minute, millisec = cls.struct.unpack(payload.read(4))
+        hour, minute, millisec = cls._struct.unpack(payload.read(4))
         if not hour & 0x80:
             return None
 

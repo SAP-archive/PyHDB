@@ -15,6 +15,7 @@
 import struct
 from collections import namedtuple
 import pyhdb.cesu8
+from pyhdb.protocol import types
 from pyhdb.protocol.base import Part, PartMeta
 from pyhdb.exceptions import InterfaceError, DatabaseError
 from pyhdb._compat import is_text, iter_range, with_metaclass
@@ -287,17 +288,17 @@ class Parameters(Part):
     def pack_data(self):
         payload = ''
         for parameter in self.parameters:
-            typ, value = parameter[1], parameter[3]
-            if value is None:
-                pfield = struct.pack('b', 0)
-            else:
-                pfield = struct.pack('b', typ)
-                if typ == 3:
-                    pfield += struct.pack('i', value)
-                elif typ == 4:
-                    pfield += struct.pack('l', value)
+            type_code, value = parameter[1], parameter[3]
+            try:
+                if type_code in types.String.code:
+                    pfield = types.by_type_code[type_code].prepare(value, type_code)
+                else:
+                    pfield = types.by_type_code[type_code].prepare(value)
 
-            #print typ, parameter[3], len(pfield)
+                print type_code, parameter[3], len(pfield), list(pfield)
+            except:
+                raise InterfaceError("Prepared statement parameter datatype not supported: %d" % type_code)
+
             payload += pfield
         return 1, payload
 

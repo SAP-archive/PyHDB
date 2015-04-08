@@ -23,3 +23,4 @@ PARAMETERS = 32         # Parameter data
 STATEMENTCONTEXT = 39   # Statement visibility context
 PARAMETERMETADATA = 47  # Parameter metadata (type and length information)
 RESULTSETMETADATA = 48  # Result set metadata (type, length, and name information)
+TRANSACTIONFLAGS = 64   # Transaction handling flags
