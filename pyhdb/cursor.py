@@ -19,13 +19,30 @@ from pyhdb.protocol.base import RequestSegment
 from pyhdb.protocol.types import escape_values, by_type_code
 from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, Parameters
 from pyhdb.protocol.constants import message_types, function_codes, part_kinds
-from pyhdb.exceptions import ProgrammingError, InterfaceError
+from pyhdb.exceptions import ProgrammingError, InterfaceError, DatabaseError
 from pyhdb._compat import iter_range
+
+
+FORMAT_OPERATION_ERRORS = [
+    'not enough arguments for format string',
+    'not all arguments converted during string formatting'
+]
+
 
 def format_operation(operation, parameters=None):
     if parameters is not None:
-        operation = operation % escape_values(parameters)
+        e_values = escape_values(parameters)
+        try:
+            operation = operation % e_values
+        except TypeError, msg:
+            if str(msg) in FORMAT_OPERATION_ERRORS:
+                # Python DBAPI expects a ProgrammingError in this case
+                raise ProgrammingError(str(msg))
+            else:
+                # some other error message appeared, so just reraise exception:
+                raise
     return operation
+
 
 class PreparedStatement(object):
 
@@ -82,7 +99,7 @@ class PreparedStatement(object):
     def set_parameters(self, param_values):
         if type(param_values) is list:
             if (len(param_values) + 1) != len (self._param_values):
-                raise InterfaceError(
+                raise ProgrammingError(
                     "Prepared statement parameters expected %d supplied %d." % (len(self._param_values) - 1, len(param_values))
                 )
 
@@ -92,7 +109,7 @@ class PreparedStatement(object):
         #    for param_id in param_values:
         #        self._param_values[param_id] = param_values[param_id]
         else:
-            raise InterfaceError(
+            raise ProgrammingError(
                 "Prepared statement parameters supplied as %s, shall be list."
                 % str(type(param_values)))
 
@@ -185,10 +202,10 @@ class Cursor(object):
 
         paramstyle 	Meaning
         ---------------------------------------------------------
-        1) qmark    Question mark style, e.g. ...WHERE name=?
+        1) qmark       Question mark style, e.g. ...WHERE name=?
         2) numeric     Numeric, positional style, e.g. ...WHERE name=:1
         3) named       Named style, e.g. ...WHERE name=:name
-        4) format 	    ANSI C printf format codes, e.g. ...WHERE name=%s
+        4) format 	   ANSI C printf format codes, e.g. ...WHERE name=%s
         5) pyformat    Python extended format codes, e.g. ...WHERE name=%(name)s
 
         Hana's 'prepare statement' feature supports 1) and 2), while 4 and 5
@@ -197,18 +214,28 @@ class Cursor(object):
         """
         self._check_closed()
 
-        # First try string expansion by Python (case 4 and 5)
-        try:
-            operation = format_operation(statement, parameters)
-        except TypeError:
-            # Python string expansion has failed.
-            # Now let's try HANA's prepare statement (case 1 and 2)
-            statement_id = self.prepare(statement)
-            prepared_statement = self.prepared_statement(statement_id)
-            self.execute_prepared(prepared_statement, parameters)
+        if not parameters:
+            # Directly execute the statement, nothing else to prepare:
+            self._execute(statement)
         else:
-            # Continue execution of statement after Python expansion has worked:
-            self._execute(operation)
+            # Parameters are given.
+            # First try safer hana-style parameter expansion:
+            try:
+                statement_id = self.prepare(statement)
+            except DatabaseError, msg:
+                # Hana expansion failed, check message to be sure of reason:
+                if 'incorrect syntax near "%"' not in str(msg):
+                    # Probably some other error than related to string expansion
+                    raise
+                # Statement contained percentage char, so try Python style
+                # parameter expansion:
+                operation = format_operation(statement, parameters)
+                self._execute(operation)
+            else:
+                # Continue with Hana style statement execution
+                prepared_statement = self.prepared_statement(statement_id)
+                self.execute_prepared(prepared_statement, parameters)
+
         # Return cursor object:
         return self
 
