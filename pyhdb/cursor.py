@@ -45,12 +45,12 @@ class PreparedStatement(object):
 
     @property
     def statement_id(self):
-        ''' statement id as byte array'''
+        """ statement id as byte array"""
         return self._statement_id
 
     @property
     def statement_xid(self):
-        ''' statement id as hex string'''
+        """ statement id as hex string"""
         return binascii.hexlify(bytearray(self._statement_id))
 
     @property
@@ -58,17 +58,17 @@ class PreparedStatement(object):
         return self._resultmetadata
 
     def set_parameter_value(self, param_id, value):
-        ''' set parameter value'''
+        """ set parameter value"""
         self._param_values[param_id] = value
 
     @property
     def parameter_value(self, param_id):
-        ''' get parameter value'''
+        """ get parameter value"""
         return self._param_values[param_id]
 
     @property
     def parameters(self):
-        ''' get all parameters' values'''
+        """ get all parameters' values"""
         Parameter = namedtuple('Parameter', 'id datatype length value')
         _result = []
         for param in self._parameters:
@@ -88,13 +88,13 @@ class PreparedStatement(object):
 
             for param_id, value in enumerate(param_values):
                 self._param_values[param_id + 1] = value
-        #elif type(param_values) is dict:
+        # elif type(param_values) is dict:
         #    for param_id in param_values:
         #        self._param_values[param_id] = param_values[param_id]
         else:
             raise InterfaceError(
-                "Prepared statement parameters supplied as %s, shall be list." % str(type(parameters))
-            )
+                "Prepared statement parameters supplied as %s, shall be list."
+                % str(type(param_values)))
 
 
 class Cursor(object):
@@ -132,7 +132,7 @@ class Cursor(object):
         _result['result_metadata'] = None # not sent for INSERT
         for _part in response.segments[0].parts:
             if _part.kind == part_kinds.STATEMENTID:
-                statement_id     = _part.statement_id
+                statement_id = _part.statement_id
             elif _part.kind == part_kinds.STATEMENTCONTEXT:
                 _result['stmt_context'] = _part
             elif _part.kind == part_kinds.PARAMETERMETADATA:
@@ -140,7 +140,11 @@ class Cursor(object):
             elif _part.kind == part_kinds.RESULTSETMETADATA:
                 _result['result_metadata'] = _part
 
-        self._prepared_statements[statement_id] = PreparedStatement(self._connection, statement_id, _result['params_metadata'], _result['result_metadata'])
+        # Handle case where parts-list was empty -> statement_id not set then!
+
+        self._prepared_statements[statement_id] = PreparedStatement(
+            self._connection, statement_id, _result['params_metadata'],
+            _result['result_metadata'])
 
         return statement_id
 
@@ -154,9 +158,8 @@ class Cursor(object):
         response = self._connection.Message(
             RequestSegment(
                 message_types.EXECUTE,
-                (   StatementId(prepared_statement.statement_id),
-                    Parameters(prepared_statement.parameters)
-                )
+                (StatementId(prepared_statement.statement_id),
+                 Parameters(prepared_statement.parameters))
             )
         ).send()
 
@@ -174,13 +177,46 @@ class Cursor(object):
                 "Invalid or unsupported function code received"
             )
 
+    def execute(self, statement, parameters=None):
+        """Execute statement on database
 
-    def execute(self, operation, parameters=None):
+        In order to be compatible with Python's DBAPI five parameter styles
+        must be supported.
+
+        paramstyle 	Meaning
+        ---------------------------------------------------------
+        1) qmark    Question mark style, e.g. ...WHERE name=?
+        2) numeric     Numeric, positional style, e.g. ...WHERE name=:1
+        3) named       Named style, e.g. ...WHERE name=:name
+        4) format 	    ANSI C printf format codes, e.g. ...WHERE name=%s
+        5) pyformat    Python extended format codes, e.g. ...WHERE name=%(name)s
+
+        Hana's 'prepare statement' feature supports 1) and 2), while 4 and 5
+        are handle by Python's own string expansion mechanism.
+        Note that case 3 is not yet supported by this method!
+        """
         self._check_closed()
 
-        operation = format_operation(operation, parameters)
+        # First try string expansion by Python (case 4 and 5)
+        try:
+            operation = format_operation(statement, parameters)
+        except TypeError:
+            # Python string expansion has failed.
+            # Now let's try HANA's prepare statement (case 1 and 2)
+            statement_id = self.prepare(statement)
+            prepared_statement = self.prepared_statement(statement_id)
+            self.execute_prepared(prepared_statement, parameters)
+        else:
+            # Continue execution of statement after Python expansion has worked:
+            self._execute(operation)
+        # Return cursor object:
+        return self
 
-        # Request resultset
+    def _execute(self, operation):
+        """Execute statements which are not going through 'prepare_statement
+        Because: Either their have no parameters, or Python's string expansion
+                 has been applied to the SQL statement.
+        """
         response = self._connection.Message(
             RequestSegment(
                 message_types.EXECUTEDIRECT,
