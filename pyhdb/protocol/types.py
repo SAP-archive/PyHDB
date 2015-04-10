@@ -20,20 +20,21 @@ import decimal
 from weakref import WeakValueDictionary
 from datetime import datetime, time, date
 
-import pyhdb.cesu8
 from pyhdb.exceptions import InterfaceError
 from pyhdb._compat import PY2, PY3, with_metaclass, iter_range, int_types, \
     string_types, byte_type, text_type
 
-
+# Dictionary: keys: numeric type code, values: Type-(sub)classes (from below)
 by_type_code = WeakValueDictionary()
+# Dictionary: keys: Python type classes, values: Type-(sub)classes (from below)
 by_python_type = WeakValueDictionary()
 
 PY26 = PY2 and sys.version_info[1] == 6
 
+
 class TypeMeta(type):
     """
-    Meta class for type classes.
+    Meta class for Type classes.
     """
 
     @staticmethod
@@ -68,8 +69,10 @@ class TypeMeta(type):
 
         return type_class
 
+
 class Type(with_metaclass(TypeMeta, object)):
     pass
+
 
 class NoneType(Type):
 
@@ -78,6 +81,7 @@ class NoneType(Type):
     @classmethod
     def to_sql(cls, self):
         return text_type("NULL")
+
 
 class _IntType(Type):
 
@@ -98,15 +102,18 @@ class _IntType(Type):
             pfield += cls._struct.pack(value)
         return pfield
 
+
 class TinyInt(_IntType):
 
     code = 1
     _struct = struct.Struct("B")
 
+
 class SmallInt(_IntType):
 
     code = 2
     _struct = struct.Struct("h")
+
 
 class Int(_IntType):
 
@@ -118,10 +125,12 @@ class Int(_IntType):
     def to_sql(cls, value):
         return text_type(value)
 
+
 class BigInt(_IntType):
 
     code = 4
     _struct = struct.Struct("l")
+
 
 class Decimal(Type):
 
@@ -153,6 +162,7 @@ class Decimal(Type):
     def to_sql(cls, value):
         return text_type(value)
 
+
 class Real(Type):
 
     code = 6
@@ -164,6 +174,7 @@ class Real(Type):
         if payload == b"\xFF\xFF\xFF\xFF":
             return None
         return cls._struct.unpack(payload)[0]
+
 
 class Double(_IntType):
 
@@ -181,6 +192,7 @@ class Double(_IntType):
     @classmethod
     def to_sql(cls, value):
         return text_type(value)
+
 
 class String(Type):
 
@@ -240,6 +252,7 @@ class String(Type):
             pfield += value
         return pfield
 
+
 class Binary(Type):
 
     code = (12, 13, 33)
@@ -260,6 +273,7 @@ class Binary(Type):
         if PY3:
             value = value.decode('ascii')
         return "'%s'" % value
+
 
 class Date(Type):
 
@@ -340,6 +354,7 @@ class Date(Type):
         Z = C + day + E + F - 1524
         return Z + 1 - TURN_OF_ERAS
 
+
 class Time(Type):
 
     code = 15
@@ -359,6 +374,7 @@ class Time(Type):
     @classmethod
     def to_sql(cls, value):
         return "'%s'" % value.strftime("%H:%M:%S")
+
 
 class Timestamp(Type):
 
@@ -382,6 +398,7 @@ class Timestamp(Type):
             value.microsecond
         )
 
+
 def escape(value):
     """
     Escape a single value.
@@ -397,6 +414,7 @@ def escape(value):
             )
 
         return typ.to_sql(value)
+
 
 def escape_values(values):
     """
