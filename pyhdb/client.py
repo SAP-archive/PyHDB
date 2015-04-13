@@ -16,6 +16,7 @@ import os
 import socket
 import struct
 import threading
+import logging
 from io import BytesIO
 
 from pyhdb.auth import AuthManager
@@ -30,7 +31,10 @@ INITIALIZATION_BYTES = bytearray([
     255, 255, 255, 255, 4, 20, 0, 4, 1, 0, 0, 1, 1, 1
 ])
 
+recv_log = logging.getLogger('receive')
+debug = recv_log.debug
 version_struct = struct.Struct('<bH')
+
 
 class Connection(object):
 
@@ -78,15 +82,18 @@ class Connection(object):
                 self._socket.sendall(packed_message)
 
                 # Read first message header
-                header = self._socket.recv(32)
+                raw_header = self._socket.recv(32)
                 try:
-                    header = Message.struct.unpack(header)
+                    header = Message.struct.unpack(raw_header)
                 except struct.error:
                     raise Exception("Invalid message header received")
 
                 # Receive complete message payload
                 payload = b""
                 received = 0
+                msg = 'Message header (32 bytes): sessionid: %d, ' \
+                      'packetcount: %d, length: %d, size: %d, noofsegm: %d'
+                debug(msg, *(header[:5]))
                 while received < header[2]:
                     _payload = self._socket.recv(header[2] - received)
                     if not _payload:
@@ -94,6 +101,7 @@ class Connection(object):
                     payload += _payload
                     received += len(_payload)
 
+                debug('Read %d bytes payload from socket', received)
                 payload = BytesIO(payload)
 
                 # Keep session id of connection up to date

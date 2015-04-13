@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import struct
+import logging
 from io import BytesIO
 from weakref import WeakValueDictionary
 
@@ -27,6 +28,9 @@ MAX_SEGMENT_SIZE = MAX_MESSAGE_SIZE - MESSAGE_HEADER_SIZE
 SEGMENT_HEADER_SIZE = 24
 
 PART_HEADER_SIZE = 16
+
+recv_log = logging.getLogger('receive')
+debug = recv_log.debug
 
 
 class Message(object):
@@ -215,6 +219,10 @@ class ReplySegment(BaseSegment):
             except struct.error:
                 raise Exception("No valid reply segment header")
 
+            msg = 'Segment Header (%d/%d, 24 bytes): segmentlength: %d, ' \
+                  'segmentofs: %d, noofparts: %d, segmentno: %d, rserved: %d,' \
+                  ' segmentkind: %d, functioncode: %d'
+            debug(msg, num_segments+1, expected_segments, *segment_header[:7])
             if expected_segments == 1:
                 # If we just expects one segment than we can take the full
                 # payload. This also a workaround of an internal bug.
@@ -223,13 +231,15 @@ class ReplySegment(BaseSegment):
                 segment_payload_size = segment_header[0] - SEGMENT_HEADER_SIZE
 
             # Determinate segment payload
-            segment_payload = BytesIO(payload.read(segment_payload_size))
+            pl = payload.read(segment_payload_size)
+            segment_payload = BytesIO(pl)
+            debug('Read %d bytes payload segment %d', len(pl), num_segments + 1)
 
             num_segments += 1
 
-            if base_segment_header[4] == 2: # Reply segment
+            if base_segment_header[4] == 2:  # Reply segment
                 yield ReplySegment.unpack(segment_header, segment_payload)
-            elif base_segment_header[4] == 5: # Error segment
+            elif base_segment_header[4] == 5:  # Error segment
                 error = ReplySegment.unpack(segment_header, segment_payload)
                 if error.parts[0].kind == part_kinds.ROWSAFFECTED:
                     raise Exception("Rows affected %s" % (error.parts[0].values,))
@@ -273,6 +283,7 @@ class PartMeta(type):
 
         part_mapping[part_class.kind] = part_class
         return part_class
+
 
 class Part(with_metaclass(PartMeta, object)):
 
@@ -321,10 +332,17 @@ class Part(with_metaclass(PartMeta, object)):
                     "Unknown part kind %s" % part_header[0]
                 )
 
+            msg = 'Part Header (%d/%d, 16 bytes): partkind: %s(%d), ' \
+                  'partattributes: %d, argumentcount: %d, bigargumentcount: %d'\
+                  ', bufferlength: %d, buffersize: %d'
+            debug(msg, num_parts+1, expected_parts, PartClass.__name__,
+                  *part_header[:6])
+            debug('Read %d bytes payload for part %d',
+                  part_payload_size, num_parts + 1)
             init_arguments = PartClass.unpack_data(
                 part_header[2], part_payload
             )
-
+            debug('Part data: %s', init_arguments)
             part = PartClass(*init_arguments)
             part.attribute = part_header[1]
             part.source = 'server'
