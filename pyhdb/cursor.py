@@ -216,7 +216,7 @@ class Cursor(object):
 
         if not parameters:
             # Directly execute the statement, nothing else to prepare:
-            self._execute(statement)
+            self._execute_direct(statement)
         else:
             # Parameters are given.
             # First try safer hana-style parameter expansion:
@@ -230,7 +230,7 @@ class Cursor(object):
                 # Statement contained percentage char, so try Python style
                 # parameter expansion:
                 operation = format_operation(statement, parameters)
-                self._execute(operation)
+                self._execute_direct(operation)
             else:
                 # Continue with Hana style statement execution
                 prepared_statement = self.prepared_statement(statement_id)
@@ -239,8 +239,9 @@ class Cursor(object):
         # Return cursor object:
         return self
 
-    def _execute(self, operation):
+    def _execute_direct(self, operation):
         """Execute statements which are not going through 'prepare_statement
+        (aka 'direct execution').
         Because: Either their have no parameters, or Python's string expansion
                  has been applied to the SQL statement.
         """
