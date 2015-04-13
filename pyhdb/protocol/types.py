@@ -88,6 +88,7 @@ class _IntType(Type):
     @classmethod
     def from_resultset(cls, payload):
         if payload.read(1) == b"\x01":
+            # x01 indicates that there is a real value available to be read
             return cls._struct.unpack(payload.read(cls._struct.size))[0]
         else:
             # Value is Null
@@ -397,6 +398,24 @@ class Timestamp(Type):
             value.strftime("%Y-%m-%d %H:%M:%S"),
             value.microsecond
         )
+
+
+class Blob(Type):
+    code = 27
+
+    @classmethod
+    def from_resultset(cls, payload):
+        header = list(payload.read(32))
+        import pdb;pdb.set_trace()
+        data = payload.read(ord(header[4]))
+        for i in range (0,8):
+            x = []
+            for j in range (0, 4):
+                x.append(header[i*4+j])
+            print '%d:' % i, x
+
+        print 'd:', list(data)
+        return data
 
 
 def escape(value):
