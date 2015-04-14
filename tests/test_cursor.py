@@ -14,7 +14,7 @@
 
 import pytest
 
-from pyhdb.cursor import format_operation
+from pyhdb.cursor import format_operation, format_named_operation
 from pyhdb.exceptions import ProgrammingError
 
 
@@ -86,16 +86,27 @@ def test_format_operation_with_pyformat_parameters():
     ) == "INSERT INTO TEST VALUES('Hello World', 2)"
 
 
-def test_format_operation_with_qmark_parameters():
-    assert format_operation(
-        "INSERT INTO TEST VALUES(?)", ("'Hello World'",)
-    ) == "INSERT INTO TEST VALUES('''Hello World''')"
+@pytest.mark.parametrize("parameters", [
+    None,
+    (),
+    []
+])
+def test_format_named_operation_without_parameters(parameters):
+    """Test that providing no parameter produces correct result."""
+    operation = "SELECT * FROM TEST WHERE fuu = 'bar'"
+    assert format_named_operation(operation, parameters) == operation
 
 
-def test_format_operation_with_named_parameters():
-    assert format_operation(
-        "INSERT INTO TEST VALUES(:hello)", dict(hello="'Hello World'")
-    ) == "INSERT INTO TEST VALUES('''Hello World''')"
+def test_format_named_operation_with_parameters():
+    assert format_named_operation(
+        "INSERT INTO TEST VALUES(:hello)", dict(hello='Hello World')
+    ) == "INSERT INTO TEST VALUES('Hello World')"
+
+
+def test_format_named_operation_without_enough_parameters_raises():
+    """Test that providing too few parameters raises exception"""
+    with pytest.raises(ProgrammingError):
+        format_named_operation("INSERT INTO TEST VALUES(:hello)", dict())
 
 
 @pytest.mark.hanatest
@@ -153,12 +164,29 @@ def test_cursor_execute_with_params2(connection, test_table_1, content_table_1):
     # Note: use fetchall() to check that only one row gets returned
     cursor = connection.cursor()
 
-    sql = 'select test from PYHDB_TEST_1 where test=?'
+    sql = 'select test from PYHDB_TEST_1 where test=:1'
     # correct way:
     assert cursor.execute(sql, ['row2']).fetchall() == [('row2',)]
     # invalid - extra unexpected parameter
     with pytest.raises(ProgrammingError):
         cursor.execute(sql, ['row2', 'extra']).fetchall()
+
+
+@pytest.mark.hanatest
+def test_cursor_execute_with_params3(connection, test_table_1, content_table_1):
+    """Test named parameter expansion style"""
+    # Note: use fetchall() to check that only one row gets returned
+    cursor = connection.cursor()
+
+    sql = 'select test from PYHDB_TEST_1 where test=:test'
+    # correct way:
+    assert cursor.execute(sql, {'test': 'row2'}).fetchall() == [('row2',)]
+    # also correct way, additional dict value should just be ignored
+    assert cursor.execute(sql, {'test': 'row2', 'd': 2}).fetchall() == \
+        [('row2',)]
+    # invalid: missing parameter should raise Programming error
+    with pytest.raises(ProgrammingError):
+        cursor.execute(sql, {'d': 2}).fetchall()
 
 
 @pytest.mark.hanatest
@@ -177,7 +205,7 @@ def test_cursor_execute_with_params4(connection, test_table_1, content_table_1):
 
 @pytest.mark.hanatest
 def test_cursor_execute_with_params5(connection, test_table_1, content_table_1):
-    """Test pyformat (named) parameter expansion style"""
+    """Test pyformat parameter expansion style"""
     # Note: use fetchall() to check that only one row gets returned
     cursor = connection.cursor()
 

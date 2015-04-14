@@ -45,6 +45,31 @@ def format_operation(operation, parameters=None):
     return operation
 
 
+def format_named_operation(operation, parameters=None):
+    # 1) split operation at quotes to leave string literals as they are
+    # 2) iterate over non-literals and use a regex to replace named parameters (e.g. ':id')
+    # 3) join string literals and non-literals back together
+
+    if parameters is None:
+        return operation
+
+    escaped_parameters = escape_values(parameters)
+
+    def matching_parameter(match):
+        parameter_name = match.group(1)
+        try:
+            return escaped_parameters[parameter_name]
+        except KeyError:  # no such key found in given parameters
+            raise ProgrammingError("Named parameter not specified: %(parameter_name)s ")
+
+    splitted = operation.split("'")
+    for i in range(0, len(splitted), 2):  # iterate only over non-string-literals
+        splitted[i] = re.sub(_NAMED_PARAM, matching_parameter, splitted[i])
+    return "'".join(splitted)
+
+_NAMED_PARAM = re.compile(r":([a-zA-Z]+)")
+
+
 class PreparedStatement(object):
 
     def __init__(self, connection, statement_id, parameters, resultmetadata):
@@ -227,12 +252,16 @@ class Cursor(object):
                 statement_id = self.prepare(statement)
             except DatabaseError as msg:
                 # Hana expansion failed, check message to be sure of reason:
-                if 'incorrect syntax near "%"' not in str(msg):
+                if 'incorrect syntax near "%"' in str(msg):
+                    # Statement contained percentage char, so try Python style
+                    # parameter expansion:
+                    operation = format_operation(statement, parameters)
+                elif 'cannot use parameter variable' in str(msg):
+                    # Statement contained ':', so try named parameter replacement:
+                    operation = format_named_operation(statement, parameters)
+                else:
                     # Probably some other error than related to string expansion
                     raise
-                # Statement contained percentage char, so try Python style
-                # parameter expansion:
-                operation = format_operation(statement, parameters)
                 self._execute(operation)
             else:
                 # Continue with Hana style statement execution
@@ -410,42 +439,3 @@ class Cursor(object):
     def _check_closed(self):
         if self._connection is None or self._connection.closed:
             raise ProgrammingError("Cursor closed")
-
-
-_STRING_LITERAL = re.compile(r"'.*?'")
-_NAMED_PARAM = re.compile(r":([a-zA-Z]+)")
-
-
-def _detect_paramstyle(operation):
-    """Detect the notation of parameters in the given operation"""
-    op_without_strings = _STRING_LITERAL.sub("", operation)
-    if "?" in op_without_strings:
-        return "qmark"
-    elif _NAMED_PARAM.search(op_without_strings):
-        return "named"
-    elif "%s" in op_without_strings:
-        return "format"
-
-
-def _replace_in_non_strings(operation, find_regex, replace_func):
-    splitted = operation.split("'")
-    for i in range(0, len(splitted), 2):
-        splitted[i] = re.sub(find_regex, replace_func, splitted[i])
-    return '"'.join(splitted)
-
-
-def _insert_qmark_params(operation, parameters):
-    parameter_list = list(parameters)
-
-    def next_parameter(_):
-        # return them one by one
-        return parameter_list.pop(0)
-
-    return _replace_in_non_strings(operation, '\?', next_parameter)
-
-
-def _insert_named_params(operation, parameters):
-    def matching_parameter(match):
-        return parameters[match.group(1)]
-
-    return _replace_in_non_strings(operation, _NAMED_PARAM, matching_parameter)
