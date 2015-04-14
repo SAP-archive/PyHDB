@@ -17,12 +17,18 @@ import re
 import struct
 import binascii
 import decimal
+import logging
 from weakref import WeakValueDictionary
 from datetime import datetime, time, date
 
 from pyhdb.exceptions import InterfaceError
 from pyhdb._compat import PY2, PY3, with_metaclass, iter_range, int_types, \
     string_types, byte_type, text_type
+from . import lobs
+
+
+recv_log = logging.getLogger('receive')
+debug = recv_log.debug
 
 # Dictionary: keys: numeric type code, values: Type-(sub)classes (from below)
 by_type_code = WeakValueDictionary()
@@ -86,7 +92,7 @@ class NoneType(Type):
 class _IntType(Type):
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         if payload.read(1) == b"\x01":
             # x01 indicates that there is a real value available to be read
             return cls._struct.unpack(payload.read(cls._struct.size))[0]
@@ -139,7 +145,7 @@ class Decimal(Type):
     python_type = decimal.Decimal
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         payload = bytearray(payload.read(16))
         payload.reverse()
 
@@ -170,7 +176,7 @@ class Real(Type):
     _struct = struct.Struct("<f")
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         payload = payload.read(8)
         if payload == b"\xFF\xFF\xFF\xFF":
             return None
@@ -184,7 +190,7 @@ class Double(_IntType):
     _struct = struct.Struct("<d")
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         payload = payload.read(8)
         if payload == b"\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF":
             return None
@@ -219,7 +225,7 @@ class String(Type):
         return length
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         length = String.get_length(payload)
         if length is None:
             return None
@@ -260,7 +266,7 @@ class Binary(Type):
     python_type = byte_type
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         length = String.get_length(payload)
         if length is None:
             return None
@@ -283,7 +289,7 @@ class Date(Type):
     _struct = struct.Struct("hbh")
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         payload = bytearray(payload.read(4))
         if not payload[1] & 0x80:
             return None
@@ -363,7 +369,7 @@ class Time(Type):
     _struct = struct.Struct("bbH")
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         hour, minute, millisec = cls._struct.unpack(payload.read(4))
         if not hour & 0x80:
             return None
@@ -383,7 +389,7 @@ class Timestamp(Type):
     python_type = datetime
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         date = Date.from_resultset(payload)
         time = Time.from_resultset(payload)
 
@@ -400,22 +406,26 @@ class Timestamp(Type):
         )
 
 
-class Blob(Type):
+
+"""
+python
+import pyhdb
+conn = pyhdb.connect('mo-2384d0f48.mo.sap.corp', 30015, 'D037732', 'Abcd1234')
+c = conn.cursor()
+c.execute("select bdata from D037732.images where name='blob2000'")
+
+"""
+
+
+class LobType(Type):
+    """
+    Parse LOB from payload.
+    """
     code = 27
 
     @classmethod
-    def from_resultset(cls, payload):
-        header = list(payload.read(32))
-        import pdb;pdb.set_trace()
-        data = payload.read(ord(header[4]))
-        for i in range (0,8):
-            x = []
-            for j in range (0, 4):
-                x.append(header[i*4+j])
-            print '%d:' % i, x
-
-        print 'd:', list(data)
-        return data
+    def from_resultset(cls, payload, connection=None):
+        return lobs.from_payload(payload, connection)
 
 
 def escape(value):

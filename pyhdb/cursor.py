@@ -99,9 +99,8 @@ class PreparedStatement(object):
     def set_parameters(self, param_values):
         if type(param_values) is list:
             if (len(param_values) + 1) != len (self._param_values):
-                raise ProgrammingError(
-                    "Prepared statement parameters expected %d supplied %d." % (len(self._param_values) - 1, len(param_values))
-                )
+                raise ProgrammingError("Prepared statement parameters expected %d supplied %d." %
+                                       (len(self._param_values) - 1, len(param_values)))
 
             for param_id, value in enumerate(param_values):
                 self._param_values[param_id + 1] = value
@@ -109,9 +108,8 @@ class PreparedStatement(object):
         #    for param_id in param_values:
         #        self._param_values[param_id] = param_values[param_id]
         else:
-            raise ProgrammingError(
-                "Prepared statement parameters supplied as %s, shall be list."
-                % str(type(param_values)))
+            raise ProgrammingError("Prepared statement parameters supplied as %s, shall be list." %
+                                   str(type(param_values)))
 
 
 class Cursor(object):
@@ -190,9 +188,7 @@ class Cursor(object):
             # No additional handling is required
             pass
         else:
-            raise InterfaceError(
-                "Invalid or unsupported function code received"
-            )
+            raise InterfaceError("Invalid or unsupported function code received")
 
     def execute(self, statement, parameters=None):
         """Execute statement on database
@@ -262,9 +258,7 @@ class Cursor(object):
             # No additional handling is required
             pass
         else:
-            raise InterfaceError(
-                "Invalid or unsupported function code received"
-            )
+            raise InterfaceError("Invalid or unsupported function code received")
 
     def executemany(self, statement, parameters):
         # TODO: Prepare statement and use binary parameters transmission
@@ -311,9 +305,7 @@ class Cursor(object):
             elif part.kind == part_kinds.STATEMENTCONTEXT:
                 pass
             else:
-                raise InterfaceError (
-                    "Prepared select statement response, unexpected part kind %d." % part.kind
-                )
+                raise InterfaceError("Prepared select statement response, unexpected part kind %d." % part.kind)
 
     def _handle_prepared_insert(self, parts):
         for part in parts:
@@ -325,9 +317,7 @@ class Cursor(object):
             elif part.kind == part_kinds.STATEMENTCONTEXT:
                 pass
             else:
-                raise InterfaceError (
-                    "Prepared insert statement response, unexpected part kind %d." % part.kind
-                )
+                raise InterfaceError ("Prepared insert statement response, unexpected part kind %d." % part.kind)
         self._executed = True
 
     def _handle_select(self, parts):
@@ -354,9 +344,7 @@ class Cursor(object):
 
     def _unpack_rows(self, payload, rows):
         for i in iter_range(rows):
-            yield tuple(
-                typ.from_resultset(payload) for typ in self._column_types
-            )
+            yield tuple(typ.from_resultset(payload, self._connection) for typ in self._column_types)
 
     def fetchmany(self, size=None):
         self._check_closed()
@@ -409,3 +397,16 @@ class Cursor(object):
     def _check_closed(self):
         if self._connection is None or self._connection.closed:
             raise ProgrammingError("Cursor closed")
+
+    def _read_lob_request(self, locator_id, readoffset, readlength):
+        """Read additional data for LOB object from database"""
+        self._check_closed()
+
+        # Request resultset
+        response = self._connection.Message(
+            RequestSegment(
+                message_types.EXECUTE,
+                (StatementId(prepared_statement.statement_id),
+                 Parameters(prepared_statement.parameters))
+            )
+        ).send()

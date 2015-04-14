@@ -22,7 +22,7 @@ from pyhdb.exceptions import InterfaceError, DatabaseError
 from pyhdb._compat import is_text, iter_range, with_metaclass
 
 
-class Fields():
+class Fields(object):
 
     @staticmethod
     def pack_data(fields):
@@ -43,7 +43,7 @@ class Fields():
         length = struct.unpack('<H', payload.read(2))[0]
         fields = []
 
-        for i in iter_range(0, length):
+        for _ in iter_range(0, length):
             size = payload.read(1)
             if size == b"\xFF":
                 size = struct.unpack('H', payload.read(2))[0]
@@ -113,7 +113,7 @@ class OptionPart(with_metaclass(OptionPartMeta, Part)):
     @classmethod
     def unpack_data(cls, argument_count, payload):
         options = {}
-        for i in iter_range(argument_count):
+        for _ in iter_range(argument_count):
             key, typ = struct.unpack('bb', payload.read(2))
 
             if key not in cls.option_identifier:
@@ -143,23 +143,6 @@ class OptionPart(with_metaclass(OptionPartMeta, Part)):
             options[key] = value
 
         return (options,)
-
-
-class Execute(Part):
-
-    def __init__(self, prepared_statement):
-        self.statement_id = prepared_statement.id
-        self.parameters = prepared_statement.param()
-
-    def pack_data(self):
-        payload = StatementId(self.statement_id)
-        # ParameterData(self.parameters)
-        return 1, payload
-
-    @classmethod
-    def unpack_data(cls, argument_count, payload):
-        execute = payload.read()
-        return execute.decode('cesu-8')
 
 
 class Command(Part):
@@ -212,11 +195,11 @@ class Error(Part):
     @classmethod
     def unpack_data(cls, argument_count, payload):
         errors = []
-        for i in iter_range(argument_count):
+        for _ in iter_range(argument_count):
             code, position, textlength, level = cls.struct.unpack(
                 payload.read(13)
             )
-            sqlstate = payload.read(5)
+            # sqlstate = payload.read(5)
             errortext = payload.read(textlength).decode('utf-8')
 
             errors.append(DatabaseError(errortext, code))
@@ -236,8 +219,7 @@ class StatementId(Part):
 
     @classmethod
     def unpack_data(cls, argument_count, payload):
-        return payload.read(8), # string
-        #return struct.unpack("8B", payload.read(8)), # tuple
+        return payload.read(8),
 
 
 class RowsAffected(Part):
@@ -250,7 +232,7 @@ class RowsAffected(Part):
     @classmethod
     def unpack_data(cls, argument_count, payload):
         values = []
-        for i in iter_range(argument_count):
+        for _ in iter_range(argument_count):
             values.append(struct.unpack("<i", payload.read(4))[0])
         return tuple(values),
 
@@ -277,6 +259,32 @@ class ResultSetId(Part):
 class TopologyInformation(Part):
 
     kind = constants.part_kinds.TOPOLOGYINFORMATION
+
+    def __init__(self, *args):
+        pass
+
+    @classmethod
+    def unpack_data(cls, argument_count, payload):
+        # TODO
+        return tuple()
+
+
+class ReadLobRequest(Part):
+
+    kind = constants.part_kinds.READLOBREQUEST
+
+    def __init__(self, *args):
+        pass
+
+    @classmethod
+    def unpack_data(cls, argument_count, payload):
+        # TODO
+        return tuple()
+
+
+class ReadLobReply(Part):
+
+    kind = constants.part_kinds.READLOBREPLY
 
     def __init__(self, *args):
         pass
@@ -408,7 +416,7 @@ class FetchSize(Part):
 
     @classmethod
     def unpack_data(cls, argument_count, payload):
-        return self.struct.unpack(payload.read())
+        return cls.struct.unpack(payload.read())
 
 
 class ParameterMetadata(Part):
@@ -441,8 +449,8 @@ class ParameterMetadata(Part):
             del param_metadata[3]
             del param_metadata[6]
 
-            options,datatype,mode,name,length,fraction = param_metadata
-            param_metadata = ParamMetadata(options,datatype,mode,name,length,fraction)
+            options, datatype, mode, name, length, fraction = param_metadata
+            param_metadata = ParamMetadata(options, datatype, mode, name, length, fraction)
 
             values.append(param_metadata)
         return tuple(values),
@@ -458,7 +466,7 @@ class ResultSetMetaData(Part):
     @classmethod
     def unpack_data(cls, argument_count, payload):
         columns = []
-        for i in iter_range(argument_count):
+        for _ in iter_range(argument_count):
             meta = list(struct.unpack('bbhhhIIII', payload.read(24)))
             columns.append(meta)
 
