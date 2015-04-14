@@ -35,7 +35,7 @@ def format_operation(operation, parameters=None):
         e_values = escape_values(parameters)
         try:
             operation = operation % e_values
-        except TypeError, msg:
+        except TypeError as msg:
             if str(msg) in FORMAT_OPERATION_ERRORS:
                 # Python DBAPI expects a ProgrammingError in this case
                 raise ProgrammingError(str(msg))
@@ -59,7 +59,8 @@ class PreparedStatement(object):
                 self._param_values[param[3]] = None
         else:
             # parameters by sequence
-            self._param_values = [None] * (1+len(parameters)) # sequence starts from 1, 2 ...; 0 not used
+            # sequence starts from 1, 2 ...; 0 not used
+            self._param_values = [None] * (1+len(parameters))
 
     @property
     def statement_id(self):
@@ -99,9 +100,10 @@ class PreparedStatement(object):
 
     def set_parameters(self, param_values):
         if type(param_values) is list:
-            if (len(param_values) + 1) != len (self._param_values):
+            if (len(param_values) + 1) != len(self._param_values):
                 raise ProgrammingError(
-                    "Prepared statement parameters expected %d supplied %d." % (len(self._param_values) - 1, len(param_values))
+                    "Prepared statement parameters expected %d supplied %d." % (
+                        len(self._param_values) - 1, len(param_values))
                 )
 
             for param_id, value in enumerate(param_values):
@@ -147,7 +149,7 @@ class Cursor(object):
         ).send()
 
         _result = {}
-        _result['result_metadata'] = None # not sent for INSERT
+        _result['result_metadata'] = None  # not sent for INSERT
         for _part in response.segments[0].parts:
             if _part.kind == part_kinds.STATEMENTID:
                 statement_id = _part.statement_id
@@ -201,12 +203,12 @@ class Cursor(object):
         In order to be compatible with Python's DBAPI five parameter styles
         must be supported.
 
-        paramstyle 	Meaning
+        paramstyle     Meaning
         ---------------------------------------------------------
         1) qmark       Question mark style, e.g. ...WHERE name=?
         2) numeric     Numeric, positional style, e.g. ...WHERE name=:1
         3) named       Named style, e.g. ...WHERE name=:name
-        4) format 	   ANSI C printf format codes, e.g. ...WHERE name=%s
+        4) format      ANSI C printf format codes, e.g. ...WHERE name=%s
         5) pyformat    Python extended format codes, e.g. ...WHERE name=%(name)s
 
         Hana's 'prepare statement' feature supports 1) and 2), while 4 and 5
@@ -223,7 +225,7 @@ class Cursor(object):
             # First try safer hana-style parameter expansion:
             try:
                 statement_id = self.prepare(statement)
-            except DatabaseError, msg:
+            except DatabaseError as msg:
                 # Hana expansion failed, check message to be sure of reason:
                 if 'incorrect syntax near "%"' not in str(msg):
                     # Probably some other error than related to string expansion
@@ -311,13 +313,12 @@ class Cursor(object):
             elif part.kind == part_kinds.STATEMENTCONTEXT:
                 pass
             else:
-                raise InterfaceError (
+                raise InterfaceError(
                     "Prepared select statement response, unexpected part kind %d." % part.kind
                 )
 
     def _handle_prepared_insert(self, parts):
         for part in parts:
-            print part.kind
             if part.kind == part_kinds.ROWSAFFECTED:
                 self.rowcount = part.values[0]
             elif part.kind == part_kinds.TRANSACTIONFLAGS:
@@ -325,7 +326,7 @@ class Cursor(object):
             elif part.kind == part_kinds.STATEMENTCONTEXT:
                 pass
             else:
-                raise InterfaceError (
+                raise InterfaceError(
                     "Prepared insert statement response, unexpected part kind %d." % part.kind
                 )
         self._executed = True
