@@ -47,7 +47,8 @@ class Lob(object):
         self.data = self.IO_Class(init_value)
         self.data.seek(0)
         if not self.isnull:
-            self._num_bytes_read = lob_header.chunk_length
+            self._lob_length = len(self.data.getvalue())
+            assert self._lob_length == self.lob_header.chunk_length  # just to be sure ;-)
 
     @property
     def isnull(self):
@@ -72,15 +73,24 @@ class Lob(object):
         # calculate the position of the file pointer after data was read:
         new_pos = min(pos + bytes_to_read, self.lob_header.byte_length)
 
-        if new_pos > self._num_bytes_read:
-            self._read_missing_lob_data_from_db(self._num_bytes_read, new_pos-self._num_bytes_read)
+        if new_pos > self._lob_length:
+            missing_bytes_to_read = new_pos - self._lob_length
+            self._read_missing_lob_data_from_db(self._lob_length, missing_bytes_to_read)
         # reposition file pointer to original position as reading in IO buffer might have changed it
         self.seek(pos, SEEK_SET)
         return self.data.read(n)
 
     def _read_missing_lob_data_from_db(self, readoffset, readlength):
         """Read LOB request part from database"""
-        print '_read_missing_lob_data_from_db', readoffset, readlength
+        cursor = self.connection.cursor()
+        readlobreply_part = cursor._read_lob_request(self.lob_header.locator_id, readoffset, readlength)
+        # make sure we really got as many bytes as requested:
+        assert readlength == len(readlobreply_part.data)
+
+        # jump to end of data, and append new to it:
+        self.data.seek(0, SEEK_END)
+        self.data.write(readlobreply_part.data)
+        self._lob_length = len(self.data.getvalue())
 
     def getvalue(self):
         if self.isnull:

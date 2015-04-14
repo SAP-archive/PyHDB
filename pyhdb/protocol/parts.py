@@ -20,6 +20,7 @@ from pyhdb.protocol import constants
 from pyhdb.protocol.base import Part, PartMeta
 from pyhdb.exceptions import InterfaceError, DatabaseError
 from pyhdb._compat import is_text, iter_range, with_metaclass
+from pyhdb.protocol.headers import LobHeader
 
 
 class Fields(object):
@@ -272,27 +273,49 @@ class TopologyInformation(Part):
 class ReadLobRequest(Part):
 
     kind = constants.part_kinds.READLOBREQUEST
+    part_struct = struct.Struct(b'<8sQI4s')
 
-    def __init__(self, *args):
-        pass
+    def __init__(self, locator_id, readoffset, readlength):
+        self.locator_id = locator_id
+        self.readoffset = readoffset
+        self.readlength = readlength
 
-    @classmethod
-    def unpack_data(cls, argument_count, payload):
-        # TODO
-        return tuple()
+    def pack_data(self):
+        """Pack data. readoffset has to be increased by one, seems like HANA starts from 1, not zero."""
+        payload = self.part_struct.pack(self.locator_id, self.readoffset + 1, self.readlength, '    ')
+        # print repr(payload)
+        return 4, payload
 
 
 class ReadLobReply(Part):
 
     kind = constants.part_kinds.READLOBREPLY
+    part_struct_p1 = struct.Struct(b'<8sB')
+    part_struct_p2 = struct.Struct(b'<I3s')
 
-    def __init__(self, *args):
-        pass
+    def __init__(self, data, isDataIncluded, isLastData):
+        # print 'realobreply called with args', args
+        self.data = data
+        self.isDataIncluded = isDataIncluded
+        self.isLastData = isLastData
 
     @classmethod
     def unpack_data(cls, argument_count, payload):
-        # TODO
-        return tuple()
+        locator_id, options = cls.part_struct_p1.unpack(payload.read(cls.part_struct_p1.size))
+        if options & LobHeader.LOB_OPTION_ISNULL:
+            # returned LOB is NULL
+            data = isDataIncluded = isLastData = None
+        else:
+            chunklength, filler = cls.part_struct_p2.unpack(payload.read(cls.part_struct_p2.size))
+            isDataIncluded = options & LobHeader.LOB_OPTION_DATAINCLUDED
+            if isDataIncluded:
+                data = payload.read()
+            else:
+                data = ''
+            isLastData = options & LobHeader.LOB_OPTION_LASTDATA
+            assert len(data) == chunklength
+        # print 'realobreply unpack data called with args', len(data), isDataIncluded, isLastData
+        return data, isDataIncluded, isLastData
 
 
 class Parameters(Part):

@@ -406,17 +406,6 @@ class Timestamp(Type):
         )
 
 
-
-"""
-python
-import pyhdb
-conn = pyhdb.connect('mo-2384d0f48.mo.sap.corp', 30015, 'D037732', 'Abcd1234')
-c = conn.cursor()
-c.execute("select bdata from D037732.images where name='blob2000'")
-
-"""
-
-
 class LobType(Type):
     """
     Parse LOB from payload.

@@ -13,6 +13,7 @@
 # language governing permissions and limitations under the License.
 
 import io
+import mock
 from pyhdb.protocol.types import lobs
 
 BLOB_HEADER = b'\x01\x02\x00\x00\xd0\x07\x00\x00\x00\x00\x00\x00\xd0\x07\x00\x00' \
@@ -51,11 +52,14 @@ def test_parse_blob():
     assert lob.lob_header.byte_length == len(BLOB_DATA)
     assert lob.lob_header.locator_id == BLOB_HEADER[20:28]
     assert lob.lob_header.chunk_length == 1024  # default length of lob data read initially
-    assert lob.read() == BLOB_DATA[:1024]
+    assert lob.data.getvalue() == BLOB_DATA[:1024]
 
 
 def test_blob_io_functions():
-    """Test that io functionality (read/getvalue()/...) works fine"""
+    """Test that io functionality (read/getvalue()/...) works fine
+    Stay below the 1024 byte range when reading to avoid loading of additional lob data from DB.
+    This feature is tested in a separate unittest below.
+    """
     payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
     lob = lobs.from_payload(payload, None)
     assert lob.tell() == 0   # should be at start of lob initially
@@ -65,9 +69,18 @@ def test_blob_io_functions():
     assert lob.tell() == 20
     assert lob.read(10) == BLOB_DATA[20:30]
     assert lob.read(10) == BLOB_DATA[30:40]
-    data = lob.read()  # rest rest of data
-    assert data == BLOB_DATA[40:1024]   # initial LOB contains only first 1024 bytes of data
-    assert lob.tell() == 1024
+    assert lob.tell() == 40
+
+
+@mock.patch('pyhdb.protocol.lobs.Lob._read_missing_lob_data_from_db')
+def test_blob_further_loading(_read_missing_lob_data_from_db):
+    """Test that reading beyond currently available data (> 1024 bytes) triggers a READLOB request"""
+    payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
+    lob = lobs.from_payload(payload, None)
+    lob_len = len(lob.data.getvalue())
+    lob.read(lob_len + 100)  # read 100 bytes more than available
+    # Reading extra 100 bytes should have triggered _read_missing_lob_data_from_db():
+    _read_missing_lob_data_from_db.assert_called_once_with(1024, 100)
 
 
 def test_parse_null_blob():

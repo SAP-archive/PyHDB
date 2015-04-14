@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# These values are embedded in REPLY segment headers:
 DDL = 1
 INSERT = 2
 UPDATE = 3
 DELETE = 4
 SELECT = 5
+WRITELOB = 15
+READLOB = 16
 DISCONNECT = 18
 
 DML = frozenset([INSERT, UPDATE, DELETE])

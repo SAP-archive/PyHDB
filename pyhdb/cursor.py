@@ -17,7 +17,7 @@ import binascii
 
 from pyhdb.protocol.base import RequestSegment
 from pyhdb.protocol.types import escape_values, by_type_code
-from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, Parameters
+from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, Parameters, ReadLobRequest
 from pyhdb.protocol.constants import message_types, function_codes, part_kinds
 from pyhdb.exceptions import ProgrammingError, InterfaceError, DatabaseError
 from pyhdb._compat import iter_range
@@ -402,11 +402,11 @@ class Cursor(object):
         """Read additional data for LOB object from database"""
         self._check_closed()
 
-        # Request resultset
         response = self._connection.Message(
             RequestSegment(
-                message_types.EXECUTE,
-                (StatementId(prepared_statement.statement_id),
-                 Parameters(prepared_statement.parameters))
+                message_types.READLOB,
+                (ReadLobRequest(locator_id, readoffset, readlength),)
             )
         ).send()
+        part = response.segments[0].parts[1]
+        return part
