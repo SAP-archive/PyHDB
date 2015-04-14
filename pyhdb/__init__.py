@@ -24,7 +24,7 @@ from pyhdb.exceptions import *
 
 apilevel = "2.0"
 threadsafety = 2
-paramstyle = ("qmark", "named", "format")
+paramstyle = "qmark"
 
 
 def connect(host, port, user, password, autocommit=False):
