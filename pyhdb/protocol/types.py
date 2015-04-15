@@ -30,7 +30,7 @@ from pyhdb._compat import PY2, PY3, with_metaclass, iter_range, int_types, \
 recv_log = logging.getLogger('receive')
 debug = recv_log.debug
 
-# Dictionary: keys: numeric type code, values: Type-(sub)classes (from below)
+# Dictionary: keys: numeric type_code, values: Type-(sub)classes (from below)
 by_type_code = WeakValueDictionary()
 # Dictionary: keys: Python type classes, values: Type-(sub)classes (from below)
 by_python_type = WeakValueDictionary()
@@ -44,25 +44,25 @@ class TypeMeta(type):
     """
 
     @staticmethod
-    def _add_type_to_type_code_mapping(type_class, code):
-        if not 0 <= code <= 127:
+    def _add_type_to_type_code_mapping(type_class, type_code):
+        if not 0 <= type_code <= 127:
             raise InterfaceError(
-                "%s type code must be between 0 and 127" %
+                "%s type type_code must be between 0 and 127" %
                 type_class.__name__
             )
-        by_type_code[code] = type_class
+        by_type_code[type_code] = type_class
 
     def __new__(cls, name, bases, attrs):
         type_class = super(TypeMeta, cls).__new__(cls, name, bases, attrs)
 
         # populate by_type_code mapping
-        if hasattr(type_class, "code"):
-            if isinstance(type_class.code, (tuple, list)):
-                for code in type_class.code:
-                    TypeMeta._add_type_to_type_code_mapping(type_class, code)
+        if hasattr(type_class, "type_code"):
+            if isinstance(type_class.type_code, (tuple, list)):
+                for type_code in type_class.type_code:
+                    TypeMeta._add_type_to_type_code_mapping(type_class, type_code)
             else:
                 TypeMeta._add_type_to_type_code_mapping(
-                    type_class, type_class.code
+                    type_class, type_class.type_code
                 )
 
         # populate by_python_type mapping
@@ -85,7 +85,7 @@ class NoneType(Type):
     python_type = None.__class__
 
     @classmethod
-    def to_sql(cls, self):
+    def to_sql(cls, _):
         return text_type("NULL")
 
 
@@ -105,26 +105,26 @@ class _IntType(Type):
         if value is None:
             pfield = struct.pack('b', 0)
         else:
-            pfield = struct.pack('b', cls.code)
+            pfield = struct.pack('b', cls.type_code)
             pfield += cls._struct.pack(value)
         return pfield
 
 
 class TinyInt(_IntType):
 
-    code = type_codes.TINYINT
+    type_code = type_codes.TINYINT
     _struct = struct.Struct("B")
 
 
 class SmallInt(_IntType):
 
-    code = type_codes.SMALLINT
+    type_code = type_codes.SMALLINT
     _struct = struct.Struct("h")
 
 
 class Int(_IntType):
 
-    code = type_codes.INT
+    type_code = type_codes.INT
     python_type = int_types
     _struct = struct.Struct("i")
 
@@ -135,13 +135,13 @@ class Int(_IntType):
 
 class BigInt(_IntType):
 
-    code = type_codes.BIGINT
+    type_code = type_codes.BIGINT
     _struct = struct.Struct("l")
 
 
 class Decimal(Type):
 
-    code = type_codes.DECIMAL
+    type_code = type_codes.DECIMAL
     python_type = decimal.Decimal
 
     @classmethod
@@ -172,7 +172,7 @@ class Decimal(Type):
 
 class Real(Type):
 
-    code = type_codes.REAL
+    type_code = type_codes.REAL
     _struct = struct.Struct("<f")
 
     @classmethod
@@ -185,7 +185,7 @@ class Real(Type):
 
 class Double(_IntType):
 
-    code = type_codes.DOUBLE
+    type_code = type_codes.DOUBLE
     python_type = float
     _struct = struct.Struct("<d")
 
@@ -203,8 +203,8 @@ class Double(_IntType):
 
 class String(Type):
 
-    code = (type_codes.CHAR, type_codes.VARCHAR, type_codes.NCHAR, type_codes.NVARCHAR,
-            type_codes.STRING, type_codes.NSTRING)
+    type_code = (type_codes.CHAR, type_codes.VARCHAR, type_codes.NCHAR, type_codes.NVARCHAR,
+                 type_codes.STRING, type_codes.NSTRING)
     python_type = string_types
 
     ESCAPE_REGEX = re.compile(r"[\']")
@@ -240,8 +240,8 @@ class String(Type):
         )
 
     @classmethod
-    def prepare(cls, value, code=8):
-        pfield = struct.pack('b', code)
+    def prepare(cls, value, type_code=type_codes.CHAR):
+        pfield = struct.pack('b', type_code)
         if value is None:
             # length indicator
             pfield += struct.pack('b', 255)
@@ -263,7 +263,7 @@ class String(Type):
 
 class Binary(Type):
 
-    code = (type_codes.BINARY, type_codes.VARBINARY, type_codes.BSTRING)
+    type_code = (type_codes.BINARY, type_codes.VARBINARY, type_codes.BSTRING)
     python_type = byte_type
 
     @classmethod
@@ -285,7 +285,7 @@ class Binary(Type):
 
 class Date(Type):
 
-    code = type_codes.DATE
+    type_code = type_codes.DATE
     python_type = datetime.date
     _struct = struct.Struct("<hbh")
 
@@ -309,7 +309,7 @@ class Date(Type):
         """Pack datetime value into proper binary format"""
         # According to the docs setting year to 0x8000 indicates a NULL value for a date object
         year = 0x8000 if value is None else value.year
-        pfield = struct.pack('b', cls.code)
+        pfield = struct.pack('b', cls.type_code)
         pfield += cls._struct.pack(year, value.month, value.day)
         return pfield
 
@@ -355,7 +355,7 @@ class Date(Type):
 
 class Time(Type):
 
-    code = type_codes.TIME
+    type_code = type_codes.TIME
     python_type = datetime.time
     _struct = struct.Struct("<bbH")
 
@@ -376,7 +376,7 @@ class Time(Type):
 
 class Timestamp(Type):
 
-    code = type_codes.TIMESTAMP
+    type_code = type_codes.TIMESTAMP
     python_type = datetime.datetime
 
     @classmethod
@@ -398,7 +398,7 @@ class LobType(Type):
     """
     Parse LOB from payload.
     """
-    code = (type_codes.CLOB, type_codes.NCLOB, type_codes.BLOB)
+    type_code = (type_codes.CLOB, type_codes.NCLOB, type_codes.BLOB)
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
