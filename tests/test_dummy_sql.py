@@ -18,6 +18,7 @@ from decimal import Decimal, getcontext
 
 import pytest
 
+
 @pytest.mark.hanatest
 def test_dummy_sql_int(connection):
     cursor = connection.cursor()
@@ -25,6 +26,7 @@ def test_dummy_sql_int(connection):
 
     result = cursor.fetchone()
     assert result == (1,)
+
 
 @pytest.mark.hanatest
 def test_dummy_sql_decimal(connection):
@@ -36,6 +38,7 @@ def test_dummy_sql_decimal(connection):
     result = cursor.fetchone()
     assert result == (Decimal('-312313212312321.1245678910111213142'),)
 
+
 @pytest.mark.hanatest
 def test_dummy_sql_string(connection):
     cursor = connection.cursor()
@@ -43,6 +46,7 @@ def test_dummy_sql_string(connection):
 
     result = cursor.fetchone()
     assert result == ("Hello World",)
+
 
 @pytest.mark.hanatest
 def test_dummy_sql_long_string(connection):
@@ -54,6 +58,7 @@ def test_dummy_sql_long_string(connection):
     result = cursor.fetchone()
     assert result == (test_string,)
 
+
 @pytest.mark.hanatest
 def test_dummy_sql_binary(connection):
     cursor = connection.cursor()
@@ -62,6 +67,7 @@ def test_dummy_sql_binary(connection):
     result = cursor.fetchone()
     assert result == (b"\xFF\x00\xFF\xA3\xB5",)
 
+
 @pytest.mark.hanatest
 def test_dummy_sql_current_time(connection):
     cursor = connection.cursor()
@@ -69,6 +75,7 @@ def test_dummy_sql_current_time(connection):
 
     result = cursor.fetchone()
     assert isinstance(result[0], datetime.time)
+
 
 @pytest.mark.hanatest
 def test_dummy_sql_to_time(connection):
@@ -82,6 +89,7 @@ def test_dummy_sql_to_time(connection):
     # No support of microsecond
     assert result[0] == now.replace(microsecond=0)
 
+
 @pytest.mark.hanatest
 def test_dummy_sql_current_date(connection):
     cursor = connection.cursor()
@@ -89,6 +97,7 @@ def test_dummy_sql_current_date(connection):
 
     result = cursor.fetchone()
     assert isinstance(result[0], datetime.date)
+
 
 @pytest.mark.hanatest
 def test_dummy_sql_to_date(connection):
@@ -100,6 +109,7 @@ def test_dummy_sql_to_date(connection):
     result = cursor.fetchone()
     assert result[0] == today
 
+
 @pytest.mark.hanatest
 def test_dummy_sql_current_timestamp(connection):
     cursor = connection.cursor()
@@ -107,6 +117,7 @@ def test_dummy_sql_current_timestamp(connection):
 
     result = cursor.fetchone()
     assert isinstance(result[0], datetime.datetime)
+
 
 @pytest.mark.hanatest
 def test_dummy_sql_to_timestamp(connection):
@@ -119,10 +130,11 @@ def test_dummy_sql_to_timestamp(connection):
     result = cursor.fetchone()
     assert result[0] == now
 
+
 @pytest.mark.hanatest
 def test_dummy_sql_without_result(connection):
     cursor = connection.cursor()
     cursor.execute("SELECT 1 FROM DUMMY WHERE 1 != 1")
 
     result = cursor.fetchone()
-    assert result == None
+    assert result is None

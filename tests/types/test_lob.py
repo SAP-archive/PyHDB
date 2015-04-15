@@ -15,6 +15,8 @@
 import io
 import mock
 from pyhdb.protocol import lobs
+from pyhdb.protocol.types import type_codes
+
 
 # Fixture binary data for reading 2000 bytes blob:
 BLOB_HEADER = b'\x01\x02\x00\x00\xd0\x07\x00\x00\x00\x00\x00\x00\xd0\x07\x00\x00' \
@@ -47,7 +49,7 @@ NULL_BLOB_HEADER = b'\x01\x01'
 def test_parse_blob():
     """Parse a BLOB with 2000 random items (bytes/chars)"""
     payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
-    lob = lobs.from_payload(payload, None)
+    lob = lobs.from_payload(type_codes.BLOB, payload, None)
     assert isinstance(lob, lobs.Blob)  # check for correct instance
     assert lob.lob_header.lob_type == lob.lob_header.BLOB_TYPE
     assert lob.lob_header.options & lob.lob_header.LOB_OPTION_DATAINCLUDED
@@ -55,6 +57,7 @@ def test_parse_blob():
     assert lob.lob_header.byte_length == len(BLOB_DATA)
     assert lob.lob_header.locator_id == BLOB_HEADER[20:28]
     assert lob.lob_header.chunk_length == 1024  # default length of lob data read initially
+    assert lob.lob_header.total_lob_length == len(BLOB_DATA)
     assert lob.data.getvalue() == BLOB_DATA[:1024]
 
 
@@ -64,7 +67,7 @@ def test_blob_io_functions():
     This feature is tested in a separate unittest below.
     """
     payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
-    lob = lobs.from_payload(payload, None)
+    lob = lobs.from_payload(type_codes.BLOB, payload, None)
     assert lob.tell() == 0   # should be at start of lob initially
     assert lob.read(10) == BLOB_DATA[:10]
     assert lob.tell() == 10
@@ -79,7 +82,7 @@ def test_blob_io_functions():
 def test_blob_read_triggers_further_loading(_read_missing_lob_data_from_db):
     """Test that reading beyond currently available data (> 1024 items) triggers a READLOB request"""
     payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
-    lob = lobs.from_payload(payload, None)
+    lob = lobs.from_payload(type_codes.BLOB, payload, None)
     lob_len = len(lob.data.getvalue())
     lob.read(lob_len + 100)  # read 100 items (chars/bytes) more than available
     # Reading extra 100 items should have triggered _read_missing_lob_data_from_db():
@@ -90,7 +93,7 @@ def test_blob_read_triggers_further_loading(_read_missing_lob_data_from_db):
 def test_blob_seek_triggers_further_loading(_read_missing_lob_data_from_db):
     """Test that seeking beyond currently available data (> 1024 items) triggers a READLOB request"""
     payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
-    lob = lobs.from_payload(payload, None)
+    lob = lobs.from_payload(type_codes.BLOB, payload, None)
     lob_len = len(lob.data.getvalue())
     lob.seek(lob_len + 100)  # seek to position 100 items (bytes/chars) after what is available
     # This should have triggered _read_missing_lob_data_from_db().
@@ -102,7 +105,7 @@ def test_blob_seek_triggers_further_loading(_read_missing_lob_data_from_db):
 def test_parse_null_blob():
     """Parse a BLOB which is NULL"""
     payload = io.BytesIO(NULL_BLOB_HEADER)
-    lob = lobs.from_payload(payload, None)
+    lob = lobs.from_payload(type_codes.BLOB, payload, None)
     assert isinstance(lob, lobs.Blob)  # check for correct instance
     assert lob.lob_header.lob_type == lob.lob_header.BLOB_TYPE
     assert lob.lob_header.options & lob.lob_header.LOB_OPTION_ISNULL
@@ -111,7 +114,7 @@ def test_parse_null_blob():
 def test_null_blob_io_functions():
     """Test that io functionality (read/getvalue()/...) of NULL blob also behave"""
     payload = io.BytesIO(NULL_BLOB_HEADER)
-    lob = lobs.from_payload(payload, None)
+    lob = lobs.from_payload(type_codes.BLOB, payload, None)
     assert lob.tell() is None
     assert lob.read(10) is None
     lob.seek(20)  # is accepted, but ignored

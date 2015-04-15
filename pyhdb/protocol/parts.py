@@ -336,7 +336,7 @@ class Parameters(Part):
         for parameter in self.parameters:
             type_code, value = parameter[1], parameter[3]
             try:
-                if type_code in types.String.code:
+                if type_code in types.String.type_code:
                     pfield = types.by_type_code[type_code].prepare(value, type_code)
                 else:
                     pfield = types.by_type_code[type_code].prepare(value)
