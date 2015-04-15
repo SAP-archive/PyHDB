@@ -24,7 +24,6 @@ from datetime import datetime, time, date
 from pyhdb.exceptions import InterfaceError
 from pyhdb._compat import PY2, PY3, with_metaclass, iter_range, int_types, \
     string_types, byte_type, text_type
-from . import lobs
 
 
 recv_log = logging.getLogger('receive')
@@ -310,7 +309,7 @@ class Date(Type):
             pfield += struct.pack('b', 0)
             pfield += struct.pack('h', 0)
         else:
-            pfield = struct.pack('b', typ)
+            pfield = struct.pack('b', cls.code)
             pfield += struct.pack('h', value.year)
             pfield += struct.pack('b', value.month)
             pfield += struct.pack('h', value.day)
@@ -414,6 +413,8 @@ class LobType(Type):
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
+        # to avoid circular import the 'lobs' module has to be imported here:
+        from . import lobs
         return lobs.from_payload(payload, connection)
 
 
