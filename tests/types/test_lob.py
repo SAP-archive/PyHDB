@@ -14,8 +14,9 @@
 
 import io
 import mock
-from pyhdb.protocol.types import lobs
+from pyhdb.protocol import lobs
 
+# Fixture binary data for reading 2000 bytes blob:
 BLOB_HEADER = b'\x01\x02\x00\x00\xd0\x07\x00\x00\x00\x00\x00\x00\xd0\x07\x00\x00' \
               b'\x00\x00\x00\x00\x00\x00\x00\x00\xb2\xb9\x04\x00\x00\x04\x00\x00'
 BLOB_DATA = 'qXHUi0ChHWEWUgSBYhq3LvrgtOOjgGMubxPs3nbfUsRrFKVs0uTgQB4eJtQnPFjG1ZD2rB6qXt0QKvOpyRurpAWYWAH6Q3O2iaGA' \
@@ -39,13 +40,15 @@ BLOB_DATA = 'qXHUi0ChHWEWUgSBYhq3LvrgtOOjgGMubxPs3nbfUsRrFKVs0uTgQB4eJtQnPFjG1ZD
             'IYPguIyGDs8xz4QvMjV4SPGWxkRrCrZgbCbO2t2PM6czC49c5FLbw3QX3UzinDaOumhJtzMpmAPUVjzX0cPiDalsmkxIb1Razz4e' \
             '1cdPATFx3vFelO8KOMurkMxFZKB0tWDjUWOGuQ4hiBu29TXAbR7Q9sxj8erB8omv5R4JyHivVz4DdQ6rWrVccsepgCI1Oydmfy6G'
 
+# Fixture binary data for reading null blob:
 NULL_BLOB_HEADER = b'\x01\x01'
 
 
 def test_parse_blob():
-    """Parse a BLOB with 2000 random bytes"""
+    """Parse a BLOB with 2000 random items (bytes/chars)"""
     payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
     lob = lobs.from_payload(payload, None)
+    assert isinstance(lob, lobs.Blob)  # check for correct instance
     assert lob.lob_header.lob_type == lob.lob_header.BLOB_TYPE
     assert lob.lob_header.options & lob.lob_header.LOB_OPTION_DATAINCLUDED
     assert lob.lob_header.char_length == len(BLOB_DATA)
@@ -56,8 +59,8 @@ def test_parse_blob():
 
 
 def test_blob_io_functions():
-    """Test that io functionality (read/getvalue()/...) works fine
-    Stay below the 1024 byte range when reading to avoid loading of additional lob data from DB.
+    """Test that io functionality (read/seek/getvalue()/...) works fine
+    Stay below the 1024 item range when reading to avoid loading of additional lob data from DB.
     This feature is tested in a separate unittest below.
     """
     payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
@@ -73,20 +76,34 @@ def test_blob_io_functions():
 
 
 @mock.patch('pyhdb.protocol.lobs.Lob._read_missing_lob_data_from_db')
-def test_blob_further_loading(_read_missing_lob_data_from_db):
-    """Test that reading beyond currently available data (> 1024 bytes) triggers a READLOB request"""
+def test_blob_read_triggers_further_loading(_read_missing_lob_data_from_db):
+    """Test that reading beyond currently available data (> 1024 items) triggers a READLOB request"""
     payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
     lob = lobs.from_payload(payload, None)
     lob_len = len(lob.data.getvalue())
-    lob.read(lob_len + 100)  # read 100 bytes more than available
-    # Reading extra 100 bytes should have triggered _read_missing_lob_data_from_db():
+    lob.read(lob_len + 100)  # read 100 items (chars/bytes) more than available
+    # Reading extra 100 items should have triggered _read_missing_lob_data_from_db():
     _read_missing_lob_data_from_db.assert_called_once_with(1024, 100)
+
+
+@mock.patch('pyhdb.protocol.lobs.Lob._read_missing_lob_data_from_db')
+def test_blob_seek_triggers_further_loading(_read_missing_lob_data_from_db):
+    """Test that seeking beyond currently available data (> 1024 items) triggers a READLOB request"""
+    payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
+    lob = lobs.from_payload(payload, None)
+    lob_len = len(lob.data.getvalue())
+    lob.seek(lob_len + 100)  # seek to position 100 items (bytes/chars) after what is available
+    # This should have triggered _read_missing_lob_data_from_db().
+    # Since seek() makes the assumption that the user wants to read data from the new position
+    # another EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK are read in addition to the 100 beyond the current num items:
+    _read_missing_lob_data_from_db.assert_called_once_with(1024, 100 + lobs.Lob.EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK)
 
 
 def test_parse_null_blob():
     """Parse a BLOB which is NULL"""
     payload = io.BytesIO(NULL_BLOB_HEADER)
     lob = lobs.from_payload(payload, None)
+    assert isinstance(lob, lobs.Blob)  # check for correct instance
     assert lob.lob_header.lob_type == lob.lob_header.BLOB_TYPE
     assert lob.lob_header.options & lob.lob_header.LOB_OPTION_ISNULL
 

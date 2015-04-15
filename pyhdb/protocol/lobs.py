@@ -15,6 +15,9 @@
 import io
 import logging
 from headers import LobHeader
+from pyhdb.protocol.base import RequestSegment
+from pyhdb.protocol.constants import message_types
+from pyhdb.protocol.parts import ReadLobRequest
 
 recv_log = logging.getLogger('receive')
 
@@ -40,6 +43,7 @@ class Lob(object):
     """Base class for all LOB classes"""
 
     IO_Class = io.BytesIO  # should be overridden in subclass
+    EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK = 1024
 
     def __init__(self, connection, lob_header, init_value=''):
         self.connection = connection
@@ -52,47 +56,90 @@ class Lob(object):
 
     @property
     def isnull(self):
+        """Return whether LOB is null or not"""
         return self.lob_header.isnull()
 
-    def seek(self, offset, whence=SEEK_SET):
-        if not self.isnull:
-            self.data.seek(offset, whence)          # todo: handle case that data is not yet read from db
-
     def tell(self):
+        """Return position of pointer in lob buffer"""
         return self.data.tell() if not self.isnull else None
 
+    def seek(self, offset, whence=SEEK_SET):
+        """Seek pointer in lob data buffer to requested position.
+        Might trigger further loading of data from the database if the pointer is beyond currently read data.
+        """
+        if self.isnull:
+            return
+
+        # A nice trick is to (ab)use BytesIO.seek() to go to the desired position for easier calculation.
+        # This will not add any data to the buffer however - very convenient!
+        new_pos = self.data.seek(offset, whence)
+        missing_bytes_to_read = new_pos - self._lob_length
+        if missing_bytes_to_read > 0:
+            # Trying to seek beyond currently available LOB data, so need to load some more first.
+
+            # We are smart here: (at least trying...):
+            #         If a user sets a certain file position s/he probably wants to read data from
+            #         there. So already read some extra data to avoid yet another immediate
+            #         reading step. Try with EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK additional items (bytes/chars).
+            self._read_missing_lob_data_from_db(self._lob_length,
+                                                missing_bytes_to_read + self.EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK)
+            # reposition file pointer a originally desired position:
+            self.data.seek(new_pos)
+        return new_pos
+
     def read(self, n=-1):
-        """Read up to n bytes from the lob and return them.
+        """Read up to n items (bytes/chars) from the lob and return them.
         If n is -1 then all available data is returned.
+        Might trigger further loading of data from the database if the number of items requested for
+        reading is larger than what is currently buffered.
         """
         if self.isnull:
             return None
 
         pos = self.tell()
-        bytes_to_read = n if n != -1 else self.lob_header.byte_length - pos
+        num_items_to_read = n if n != -1 else self.lob_header.byte_length - pos
         # calculate the position of the file pointer after data was read:
-        new_pos = min(pos + bytes_to_read, self.lob_header.byte_length)
+        new_pos = min(pos + num_items_to_read, self.lob_header.byte_length)
 
         if new_pos > self._lob_length:
-            missing_bytes_to_read = new_pos - self._lob_length
-            self._read_missing_lob_data_from_db(self._lob_length, missing_bytes_to_read)
+            missing_num_items_to_read = new_pos - self._lob_length
+            self._read_missing_lob_data_from_db(self._lob_length, missing_num_items_to_read)
         # reposition file pointer to original position as reading in IO buffer might have changed it
         self.seek(pos, SEEK_SET)
         return self.data.read(n)
 
     def _read_missing_lob_data_from_db(self, readoffset, readlength):
         """Read LOB request part from database"""
-        cursor = self.connection.cursor()
-        readlobreply_part = cursor._read_lob_request(self.lob_header.locator_id, readoffset, readlength)
+        lob_data = self._make_read_lob_request(readoffset, readlength)
         # make sure we really got as many bytes as requested:
-        assert readlength == len(readlobreply_part.data)
+        assert readlength == len(lob_data)
 
         # jump to end of data, and append new to it:
         self.data.seek(0, SEEK_END)
-        self.data.write(readlobreply_part.data)
+        self.data.write(lob_data)
         self._lob_length = len(self.data.getvalue())
 
+    def _make_read_lob_request(self, readoffset, readlength):
+        """Make low level request to HANA database (READLOBREQUEST).
+        Compose request message with proper parameters and read lob data from second part object of reply.
+        """
+        self.connection._check_closed()
+
+        response = self.connection.Message(
+            RequestSegment(
+                message_types.READLOB,
+                (ReadLobRequest(self.lob_header.locator_id, readoffset, readlength),)
+            )
+        ).send()
+        # The segment of the message contains two parts.
+        # 1) StatementContext -> ignored for now
+        # 2) ReadLobReply -> contains some header information and actual LOB data
+        data_part = response.segments[0].parts[1]
+        # return actual lob container (BytesIO/TextIO):
+        return data_part.data
+
     def getvalue(self):
+        """Return all currently available lob data (might be shorter than the one in the database)"""
         if self.isnull:
             return None
         return self.data.getvalue() if not self.isnull else None

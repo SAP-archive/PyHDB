@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# These values are embedded in REPLY segment headers:
+# Function codes
+
+# These values are embedded in REPLY segment headers
+
 DDL = 1
 INSERT = 2
 UPDATE = 3

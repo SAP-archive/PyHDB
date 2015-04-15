@@ -397,16 +397,3 @@ class Cursor(object):
     def _check_closed(self):
         if self._connection is None or self._connection.closed:
             raise ProgrammingError("Cursor closed")
-
-    def _read_lob_request(self, locator_id, readoffset, readlength):
-        """Read additional data for LOB object from database"""
-        self._check_closed()
-
-        response = self._connection.Message(
-            RequestSegment(
-                message_types.READLOB,
-                (ReadLobRequest(locator_id, readoffset, readlength),)
-            )
-        ).send()
-        part = response.segments[0].parts[1]
-        return part

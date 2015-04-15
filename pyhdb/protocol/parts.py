@@ -293,29 +293,32 @@ class ReadLobReply(Part):
     part_struct_p1 = struct.Struct(b'<8sB')
     part_struct_p2 = struct.Struct(b'<I3s')
 
-    def __init__(self, data, isDataIncluded, isLastData):
+    def __init__(self, data, isDataIncluded, isLastData, isNull):
         # print 'realobreply called with args', args
         self.data = data
         self.isDataIncluded = isDataIncluded
         self.isLastData = isLastData
+        self.isNull = isNull
 
     @classmethod
     def unpack_data(cls, argument_count, payload):
         locator_id, options = cls.part_struct_p1.unpack(payload.read(cls.part_struct_p1.size))
-        if options & LobHeader.LOB_OPTION_ISNULL:
+        isNull = options & LobHeader.LOB_OPTION_ISNULL
+        if isNull:
             # returned LOB is NULL
-            data = isDataIncluded = isLastData = None
+            lobdata = isDataIncluded = isLastData = None
+            isNull = True
         else:
             chunklength, filler = cls.part_struct_p2.unpack(payload.read(cls.part_struct_p2.size))
             isDataIncluded = options & LobHeader.LOB_OPTION_DATAINCLUDED
             if isDataIncluded:
-                data = payload.read()
+                lobdata = payload.read()
             else:
-                data = ''
+                lobdata = ''
             isLastData = options & LobHeader.LOB_OPTION_LASTDATA
-            assert len(data) == chunklength
-        # print 'realobreply unpack data called with args', len(data), isDataIncluded, isLastData
-        return data, isDataIncluded, isLastData
+            assert len(lobdata) == chunklength
+        # print 'realobreply unpack data called with args', len(lobdata), isDataIncluded, isLastData
+        return lobdata, isDataIncluded, isLastData, isNull
 
 
 class Parameters(Part):
@@ -339,7 +342,7 @@ class Parameters(Part):
                     pfield = types.by_type_code[type_code].prepare(value)
 
                 print type_code, parameter[3], len(pfield), list(pfield)
-            except:
+            except KeyError:
                 raise InterfaceError("Prepared statement parameter datatype not supported: %d" % type_code)
 
             payload += pfield

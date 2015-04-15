@@ -16,9 +16,12 @@ import os
 from setuptools import setup, find_packages
 
 source_location = os.path.abspath(os.path.dirname(__file__))
+
+
 def get_version():
     with open(os.path.join(source_location, "VERSION")) as version:
         return version.readline().strip()
+
 
 def get_long_description():
     with open(os.path.join(source_location, "README.rst")) as readme:
@@ -32,6 +35,7 @@ setup(
     author="Christoph Heer",
     author_email="christoph.heer@sap.com",
     description="SAP HANA Database Client for Python",
+    include_package_data=True,   # e.g. for logging.conf
     long_description=get_long_description(),
     packages=find_packages(exclude=("tests", "tests.*",)),
     zip_safe=False,
@@ -39,7 +43,7 @@ setup(
         "pytest>=2.5.2",
         "mock>=1.0.1"
     ],
-    classifiers=[ # cf. http://pypi.python.org/pypi?%3Aaction=list_classifiers
+    classifiers=[  # http://pypi.python.org/pypi?%3Aaction=list_classifiers
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: Apache Software License',

@@ -18,13 +18,13 @@ import struct
 import binascii
 import decimal
 import logging
+import datetime
 from weakref import WeakValueDictionary
-from datetime import datetime, time, date
 
+from pyhdb.protocol.constants import type_codes
 from pyhdb.exceptions import InterfaceError
 from pyhdb._compat import PY2, PY3, with_metaclass, iter_range, int_types, \
     string_types, byte_type, text_type
-from . import lobs
 
 
 recv_log = logging.getLogger('receive')
@@ -112,19 +112,19 @@ class _IntType(Type):
 
 class TinyInt(_IntType):
 
-    code = 1
+    code = type_codes.TINYINT
     _struct = struct.Struct("B")
 
 
 class SmallInt(_IntType):
 
-    code = 2
+    code = type_codes.SMALLINT
     _struct = struct.Struct("h")
 
 
 class Int(_IntType):
 
-    code = 3
+    code = type_codes.INT
     python_type = int_types
     _struct = struct.Struct("i")
 
@@ -135,13 +135,13 @@ class Int(_IntType):
 
 class BigInt(_IntType):
 
-    code = 4
+    code = type_codes.BIGINT
     _struct = struct.Struct("l")
 
 
 class Decimal(Type):
 
-    code = 5
+    code = type_codes.DECIMAL
     python_type = decimal.Decimal
 
     @classmethod
@@ -172,7 +172,7 @@ class Decimal(Type):
 
 class Real(Type):
 
-    code = 6
+    code = type_codes.REAL
     _struct = struct.Struct("<f")
 
     @classmethod
@@ -185,7 +185,7 @@ class Real(Type):
 
 class Double(_IntType):
 
-    code = 7
+    code = type_codes.DOUBLE
     python_type = float
     _struct = struct.Struct("<d")
 
@@ -203,7 +203,8 @@ class Double(_IntType):
 
 class String(Type):
 
-    code = (8, 9, 10, 11, 29, 30)
+    code = (type_codes.CHAR, type_codes.VARCHAR, type_codes.NCHAR, type_codes.NVARCHAR,
+            type_codes.STRING, type_codes.NSTRING)
     python_type = string_types
 
     ESCAPE_REGEX = re.compile(r"[\']")
@@ -262,7 +263,7 @@ class String(Type):
 
 class Binary(Type):
 
-    code = (12, 13, 33)
+    code = (type_codes.BINARY, type_codes.VARBINARY, type_codes.BSTRING)
     python_type = byte_type
 
     @classmethod
@@ -284,9 +285,9 @@ class Binary(Type):
 
 class Date(Type):
 
-    code = 14
-    python_type = date
-    _struct = struct.Struct("hbh")
+    code = type_codes.DATE
+    python_type = datetime.date
+    _struct = struct.Struct("<hbh")
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
@@ -297,7 +298,7 @@ class Date(Type):
         year = payload[0] | (payload[1] & 0x3F) << 8
         month = payload[2] + 1
         day = payload[3]
-        return date(year, month, day)
+        return cls.python_type(year, month, day)
 
     @classmethod
     def to_sql(cls, value):
@@ -305,41 +306,31 @@ class Date(Type):
 
     @classmethod
     def prepare(cls, value):
-        if value is None:
-            pfield =  struct.pack('h', 0x8000)
-            pfield += struct.pack('b', 0)
-            pfield += struct.pack('h', 0)
-        else:
-            pfield = struct.pack('b', typ)
-            pfield += struct.pack('h', value.year)
-            pfield += struct.pack('b', value.month)
-            pfield += struct.pack('h', value.day)
+        """Pack datetime value into proper binary format"""
+        # According to the docs setting year to 0x8000 indicates a NULL value for a date object
+        year = 0x8000 if value is None else value.year
+        pfield = struct.pack('b', cls.code)
+        pfield += cls._struct.pack(year, value.month, value.day)
         return pfield
 
     @classmethod
     def to_daydate(cls, *argv):
-        '''
-        To Julian day (DAYDATE)
-        '''
+        """
+        Convert date to Julian day (DAYDATE)
+        """
         argc = len(argv)
         if argc == 3:
-            year = argv[0]
-            month = argv[1]
-            day = argv[2]
+            year, month, day = argv
         elif argc == 1:
             dval = argv[0]
             try:
                 year = dval.year
                 month = dval.month
                 day = dval.day
-            except:
-                raise InterfaceError(
-                    "Unsupported python date input: %s (%s)" % (str(dval), dval.__class__)
-                )
+            except AttributeError:
+                raise InterfaceError("Unsupported python date input: %s (%s)" % (str(dval), dval.__class__))
         else:
-            raise InterfaceError(
-                "Date.to_datetime does not support %d arguments." % (argc)
-            )
+            raise InterfaceError("Date.to_datetime does not support %d arguments." % argc)
 
         TURN_OF_ERAS = 1721424
 
@@ -348,25 +339,25 @@ class Date(Type):
             month += 12
 
         if ((year > 1582) or
-            (year == 1582 and month > 10) or
-            (year == 1582 and month == 10 and day >= 15)):
-            A = int (year / 100)
-            B = int (A / 4)
+                (year == 1582 and month > 10) or
+                (year == 1582 and month == 10 and day >= 15)):
+            A = int(year / 100)
+            B = int(A / 4)
             C = 2 - A + B
         else:
             C = 0
 
-        E = int (365.25 * (year + 4716))
-        F = int (30.6001 * (month + 1))
+        E = int(365.25 * (year + 4716))
+        F = int(30.6001 * (month + 1))
         Z = C + day + E + F - 1524
         return Z + 1 - TURN_OF_ERAS
 
 
 class Time(Type):
 
-    code = 15
-    python_type = time
-    _struct = struct.Struct("bbH")
+    code = type_codes.TIME
+    python_type = datetime.time
+    _struct = struct.Struct("<bbH")
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
@@ -376,7 +367,7 @@ class Time(Type):
 
         hour = hour & 0x7f
         second, millisec = divmod(millisec, 1000)
-        return time(hour, minute, second, millisec * 1000)
+        return cls.python_type(hour, minute, second, millisec * 1000)
 
     @classmethod
     def to_sql(cls, value):
@@ -385,8 +376,8 @@ class Time(Type):
 
 class Timestamp(Type):
 
-    code = 16
-    python_type = datetime
+    code = type_codes.TIMESTAMP
+    python_type = datetime.datetime
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
@@ -396,24 +387,23 @@ class Timestamp(Type):
         if date is None or time is None:
             return None
 
-        return datetime.combine(date, time)
+        return datetime.datetime.combine(date, time)
 
     @classmethod
     def to_sql(cls, value):
-        return "'%s.%s'" % (
-            value.strftime("%Y-%m-%d %H:%M:%S"),
-            value.microsecond
-        )
+        return "'%s.%s'" % (value.strftime("%Y-%m-%d %H:%M:%S"), value.microsecond)
 
 
 class LobType(Type):
     """
     Parse LOB from payload.
     """
-    code = 27
+    code = (type_codes.CLOB, type_codes.NCLOB, type_codes.BLOB)
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
+        # to avoid circular import the 'lobs' module has to be imported here:
+        from . import lobs
         return lobs.from_payload(payload, connection)
 
 
