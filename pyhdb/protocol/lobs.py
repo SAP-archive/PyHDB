@@ -167,7 +167,7 @@ class Clob(Lob):
 
     def _decode_data(self, init_value):
         """Decode binary lob data. In this case (BLOB) no conversion is necessary"""
-        unicode_value = init_value.decode('utf8')
+        unicode_value = None if init_value is None else init_value.decode('utf8')
         return io.StringIO(unicode_value)
 
 
@@ -177,7 +177,7 @@ class NClob(Lob):
 
     def _decode_data(self, init_value):
         """Decode binary lob data. Decode utf8 into unicode in this case"""
-        unicode_value = init_value.decode('utf8')
+        unicode_value = None if init_value is None else init_value.decode('utf8')
         return io.StringIO(unicode_value)
 
 
