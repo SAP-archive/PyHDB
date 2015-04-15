@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Part kinds
+
 COMMAND = 3               # SQL Command Data
 RESULTSET = 5             # Tabular result set data
 ERROR = 6                 # Error information
