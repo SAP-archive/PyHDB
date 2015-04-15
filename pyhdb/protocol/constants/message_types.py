@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# These values are embedded in REQUEST segment headers:
 EXECUTEDIRECT = 2
 PREPARE = 3
 EXECUTE = 13
+READLOB = 16
+WRITELOB = 17
 AUTHENTICATE = 65
 CONNECT = 66
 COMMIT = 67

@@ -14,13 +14,16 @@
 
 import struct
 from collections import namedtuple
-import pyhdb.cesu8
+import pyhdb.protocol.constants.part_kinds
 from pyhdb.protocol import types
+from pyhdb.protocol import constants
 from pyhdb.protocol.base import Part, PartMeta
 from pyhdb.exceptions import InterfaceError, DatabaseError
 from pyhdb._compat import is_text, iter_range, with_metaclass
+from pyhdb.protocol.headers import LobHeader
 
-class Fields():
+
+class Fields(object):
 
     @staticmethod
     def pack_data(fields):
@@ -41,7 +44,7 @@ class Fields():
         length = struct.unpack('<H', payload.read(2))[0]
         fields = []
 
-        for i in iter_range(0, length):
+        for _ in iter_range(0, length):
             size = payload.read(1)
             if size == b"\xFF":
                 size = struct.unpack('H', payload.read(2))[0]
@@ -50,6 +53,7 @@ class Fields():
 
             fields.append(payload.read(size))
         return fields
+
 
 class OptionPartMeta(PartMeta):
 
@@ -62,6 +66,7 @@ class OptionPartMeta(PartMeta):
                 (i[1][0], i[0]) for i in part_class.option_definition.items()
             ])
         return part_class
+
 
 class OptionPart(with_metaclass(OptionPartMeta, Part)):
     """
@@ -109,7 +114,7 @@ class OptionPart(with_metaclass(OptionPartMeta, Part)):
     @classmethod
     def unpack_data(cls, argument_count, payload):
         options = {}
-        for i in iter_range(argument_count):
+        for _ in iter_range(argument_count):
             key, typ = struct.unpack('bb', payload.read(2))
 
             if key not in cls.option_identifier:
@@ -141,29 +146,13 @@ class OptionPart(with_metaclass(OptionPartMeta, Part)):
         return (options,)
 
 
-class Execute(Part):
-
-    def __init__(self, prepared_statement):
-        self.statement_id = prepared_statement.id
-        self.parameters = prepared_statement.param()
-
-    def pack_data(self):
-        payload = StatementId(self.statement_id)
-        # ParameterData(self.parameters)
-        return 1, payload
-
-    @classmethod
-    def unpack_data(cls, argument_count, payload):
-        execute = payload.read()
-        return execute.decode('cesu-8')
-
 class Command(Part):
     """
     This part contains the text of an SQL command.
     The text is encoded in CESU-8.
     """
 
-    kind = 3
+    kind = constants.part_kinds.COMMAND
 
     def __init__(self, sql_statement):
         self.sql_statement = sql_statement
@@ -177,6 +166,7 @@ class Command(Part):
         sql_statement = payload.read()
         return sql_statement.decode('cesu-8')
 
+
 class ResultSet(Part):
     """
     This part contains the raw result data but without
@@ -184,7 +174,7 @@ class ResultSet(Part):
     later step we will unpack the data.
     """
 
-    kind = 5
+    kind = constants.part_kinds.RESULTSET
 
     def __init__(self, payload, rows):
         self.payload = payload
@@ -194,9 +184,10 @@ class ResultSet(Part):
     def unpack_data(cls, argument_count, payload):
         return payload, argument_count
 
+
 class Error(Part):
 
-    kind = 6
+    kind = constants.part_kinds.ERROR
     struct = struct.Struct("iiib")
 
     def __init__(self, errors):
@@ -205,19 +196,20 @@ class Error(Part):
     @classmethod
     def unpack_data(cls, argument_count, payload):
         errors = []
-        for i in iter_range(argument_count):
+        for _ in iter_range(argument_count):
             code, position, textlength, level = cls.struct.unpack(
                 payload.read(13)
             )
-            sqlstate = payload.read(5)
+            # sqlstate = payload.read(5)
             errortext = payload.read(textlength).decode('utf-8')
 
             errors.append(DatabaseError(errortext, code))
         return tuple(errors),
 
+
 class StatementId(Part):
 
-    kind = 10
+    kind = constants.part_kinds.STATEMENTID
 
     def __init__(self, statement_id):
         self.statement_id = statement_id
@@ -228,12 +220,12 @@ class StatementId(Part):
 
     @classmethod
     def unpack_data(cls, argument_count, payload):
-        return payload.read(8), # string
-        #return struct.unpack("8B", payload.read(8)), # tuple
+        return payload.read(8),
+
 
 class RowsAffected(Part):
 
-    kind = 12
+    kind = constants.part_kinds.ROWSAFFECTED
 
     def __init__(self, values):
         self.values = values
@@ -241,16 +233,17 @@ class RowsAffected(Part):
     @classmethod
     def unpack_data(cls, argument_count, payload):
         values = []
-        for i in iter_range(argument_count):
+        for _ in iter_range(argument_count):
             values.append(struct.unpack("<i", payload.read(4))[0])
         return tuple(values),
+
 
 class ResultSetId(Part):
     """
     This part contains the identifier of a result set.
     """
 
-    kind = 13
+    kind = constants.part_kinds.RESULTSETID
 
     def __init__(self, value):
         self.value = value
@@ -263,9 +256,10 @@ class ResultSetId(Part):
         value = payload.read()
         return (value,)
 
+
 class TopologyInformation(Part):
 
-    kind = 15
+    kind = constants.part_kinds.TOPOLOGYINFORMATION
 
     def __init__(self, *args):
         pass
@@ -275,12 +269,61 @@ class TopologyInformation(Part):
         # TODO
         return tuple()
 
+
+class ReadLobRequest(Part):
+
+    kind = constants.part_kinds.READLOBREQUEST
+    part_struct = struct.Struct(b'<8sQI4s')
+
+    def __init__(self, locator_id, readoffset, readlength):
+        self.locator_id = locator_id
+        self.readoffset = readoffset
+        self.readlength = readlength
+
+    def pack_data(self):
+        """Pack data. readoffset has to be increased by one, seems like HANA starts from 1, not zero."""
+        payload = self.part_struct.pack(self.locator_id, self.readoffset + 1, self.readlength, '    ')
+        # print repr(payload)
+        return 4, payload
+
+
+class ReadLobReply(Part):
+
+    kind = constants.part_kinds.READLOBREPLY
+    part_struct_p1 = struct.Struct(b'<8sB')
+    part_struct_p2 = struct.Struct(b'<I3s')
+
+    def __init__(self, data, isDataIncluded, isLastData):
+        # print 'realobreply called with args', args
+        self.data = data
+        self.isDataIncluded = isDataIncluded
+        self.isLastData = isLastData
+
+    @classmethod
+    def unpack_data(cls, argument_count, payload):
+        locator_id, options = cls.part_struct_p1.unpack(payload.read(cls.part_struct_p1.size))
+        if options & LobHeader.LOB_OPTION_ISNULL:
+            # returned LOB is NULL
+            data = isDataIncluded = isLastData = None
+        else:
+            chunklength, filler = cls.part_struct_p2.unpack(payload.read(cls.part_struct_p2.size))
+            isDataIncluded = options & LobHeader.LOB_OPTION_DATAINCLUDED
+            if isDataIncluded:
+                data = payload.read()
+            else:
+                data = ''
+            isLastData = options & LobHeader.LOB_OPTION_LASTDATA
+            assert len(data) == chunklength
+        # print 'realobreply unpack data called with args', len(data), isDataIncluded, isLastData
+        return data, isDataIncluded, isLastData
+
+
 class Parameters(Part):
     """
     Prepared statement parameters' data
     """
 
-    kind = 32
+    kind = constants.part_kinds.PARAMETERS
 
     def __init__(self, parameters):
         self.parameters = parameters
@@ -302,9 +345,10 @@ class Parameters(Part):
             payload += pfield
         return 1, payload
 
+
 class Authentication(Part):
 
-    kind = 33
+    kind = constants.part_kinds.AUTHENTICATION
 
     def __init__(self, user, methods):
         self.user = user
@@ -326,10 +370,11 @@ class Authentication(Part):
         methods = dict(zip(fields[0::2], fields[1::2]))
         return None, methods
 
+
 class ClientId(Part):
     # Part not documented.
 
-    kind = 35
+    kind = constants.part_kinds.CLIENTID
 
     def __init__(self, client_id):
         self.client_id = client_id
@@ -343,9 +388,10 @@ class ClientId(Part):
         client_id = payload.read(2048)
         return client_id.decode('utf-8')
 
+
 class StatementContext(Part):
 
-    kind = 39
+    kind = constants.part_kinds.STATEMENTCONTEXT
 
     def __init__(self, *args):
         pass
@@ -354,9 +400,10 @@ class StatementContext(Part):
     def unpack_data(cls, argument_count, payload):
         return tuple()
 
+
 class ConnectOptions(OptionPart):
 
-    kind = 42
+    kind = constants.part_kinds.CONNECTOPTIONS
 
     option_definition = {
         # Identifier, (Value, Type)
@@ -378,9 +425,10 @@ class ConnectOptions(OptionPart):
         "data_format_version2": (23, 3)
     }
 
+
 class FetchSize(Part):
 
-    kind = 45
+    kind = constants.part_kinds.FETCHSIZE
     struct = struct.Struct('i')
 
     def __init__(self, size):
@@ -391,11 +439,12 @@ class FetchSize(Part):
 
     @classmethod
     def unpack_data(cls, argument_count, payload):
-        return self.struct.unpack(payload.read())
+        return cls.struct.unpack(payload.read())
+
 
 class ParameterMetadata(Part):
 
-    kind = 47
+    kind = constants.part_kinds.PARAMETERMETADATA
 
     def __init__(self, values):
         self.values = values
@@ -423,15 +472,16 @@ class ParameterMetadata(Part):
             del param_metadata[3]
             del param_metadata[6]
 
-            options,datatype,mode,name,length,fraction = param_metadata
-            param_metadata = ParamMetadata(options,datatype,mode,name,length,fraction)
+            options, datatype, mode, name, length, fraction = param_metadata
+            param_metadata = ParamMetadata(options, datatype, mode, name, length, fraction)
 
             values.append(param_metadata)
         return tuple(values),
 
+
 class ResultSetMetaData(Part):
 
-    kind = 48
+    kind = constants.part_kinds.RESULTSETMETADATA
 
     def __init__(self, columns):
         self.columns = columns
@@ -439,7 +489,7 @@ class ResultSetMetaData(Part):
     @classmethod
     def unpack_data(cls, argument_count, payload):
         columns = []
-        for i in iter_range(argument_count):
+        for _ in iter_range(argument_count):
             meta = list(struct.unpack('bbhhhIIII', payload.read(24)))
             columns.append(meta)
 
@@ -457,9 +507,10 @@ class ResultSetMetaData(Part):
         columns = tuple([tuple(x) for x in columns])
         return columns,
 
+
 class TransactionFlags(OptionPart):
 
-    kind = 64
+    kind = constants.part_kinds.TRANSACTIONFLAGS
 
     option_definition = {
         # Identifier, (Value, Type)
