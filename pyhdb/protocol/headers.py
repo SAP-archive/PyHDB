@@ -59,6 +59,9 @@ class LobHeader(object):
             (reserved, self.char_length, self.byte_length, self.locator_id, self.chunk_length) = header
             # print 'raw lob header: %s' % pyhdb.lib.allhexlify(raw_header_p1 + raw_header_p2)
 
+            # Set total_lob_length attribute differently for binary and character lobs:
+            self.total_lob_length = self.byte_length if self.lob_type == self.BLOB_TYPE else self.char_length
+
     def isnull(self):
         return bool(self.options & self.LOB_OPTION_ISNULL)
 

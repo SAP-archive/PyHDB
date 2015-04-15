@@ -16,7 +16,7 @@ import io
 import logging
 from headers import LobHeader
 from pyhdb.protocol.base import RequestSegment
-from pyhdb.protocol.constants import message_types
+from pyhdb.protocol.constants import message_types, type_codes
 from pyhdb.protocol.parts import ReadLobRequest
 
 recv_log = logging.getLogger('receive')
@@ -26,14 +26,14 @@ SEEK_CUR = io.SEEK_CUR
 SEEK_END = io.SEEK_END
 
 
-def from_payload(payload, connection):
+def from_payload(type_code, payload, connection):
     """Generator function to create lob from payload.
     Depending on lob type a BLOB, CLOB, or NCLOB instance will be returned.
     """
     lob_header = LobHeader(payload)
     data = payload.read(lob_header.chunk_length) if not lob_header.isnull() else None
     # print 'raw lob data: %r' % data
-    LobClass = LOB_TYPE_MAP[lob_header.lob_type]
+    LobClass = LOB_TYPE_CODE_MAP[type_code]
     lob = LobClass(connection, lob_header, init_value=data)
     recv_log.debug('Lob Header %s' % str(lob))
     return lob
@@ -48,16 +48,20 @@ class Lob(object):
     def __init__(self, connection, lob_header, init_value=''):
         self.connection = connection
         self.lob_header = lob_header
-        self.data = self.IO_Class(init_value)
+        self.data = self._decode_data(init_value)
+        # self.data = self.IO_Class(init_value)
         self.data.seek(0)
         if not self.isnull:
             self._lob_length = len(self.data.getvalue())
-            assert self._lob_length == self.lob_header.chunk_length  # just to be sure ;-)
+            # assert self._lob_length == self.lob_header.chunk_length  # just to be sure ;-)
 
     @property
     def isnull(self):
         """Return whether LOB is null or not"""
         return self.lob_header.isnull()
+
+    def _decode_data(self, init_value):
+        raise NotImplementedError()
 
     def tell(self):
         """Return position of pointer in lob buffer"""
@@ -97,9 +101,9 @@ class Lob(object):
             return None
 
         pos = self.tell()
-        num_items_to_read = n if n != -1 else self.lob_header.byte_length - pos
+        num_items_to_read = n if n != -1 else self.lob_header.total_lob_length - pos
         # calculate the position of the file pointer after data was read:
-        new_pos = min(pos + num_items_to_read, self.lob_header.byte_length)
+        new_pos = min(pos + num_items_to_read, self.lob_header.total_lob_length)
 
         if new_pos > self._lob_length:
             missing_num_items_to_read = new_pos - self._lob_length
@@ -152,19 +156,33 @@ class Blob(Lob):
     """Instance of this class will be returned for a BLOB object in a db result"""
     IO_Class = io.BytesIO
 
+    def _decode_data(self, init_value):
+        """Decode binary lob data. In this case (BLOB) no conversion is necessary"""
+        return io.BytesIO(init_value)
+
 
 class Clob(Lob):
     """Instance of this class will be returned for a CLOB object in a db result"""
     IO_Class = io.StringIO
+
+    def _decode_data(self, init_value):
+        """Decode binary lob data. In this case (BLOB) no conversion is necessary"""
+        unicode_value = init_value.decode('utf8')
+        return io.StringIO(unicode_value)
 
 
 class NClob(Lob):
     """Instance of this class will be returned for a NCLOB object in a db result"""
     IO_Class = io.StringIO
 
+    def _decode_data(self, init_value):
+        """Decode binary lob data. Decode utf8 into unicode in this case"""
+        unicode_value = init_value.decode('utf8')
+        return io.StringIO(unicode_value)
 
-LOB_TYPE_MAP = {
-    LobHeader.BLOB_TYPE: Blob,
-    LobHeader.CLOB_TYPE: Clob,
-    LobHeader.NCLOB_TYPE: NClob,
+
+LOB_TYPE_CODE_MAP = {
+    type_codes.BLOB: Blob,
+    type_codes.CLOB: Clob,
+    type_codes.NCLOB: NClob,
 }

@@ -77,7 +77,7 @@ class TypeMeta(type):
 
 
 class Type(with_metaclass(TypeMeta, object)):
-    pass
+    """Base class for all types"""
 
 
 class NoneType(Type):
@@ -394,17 +394,28 @@ class Timestamp(Type):
         return "'%s.%s'" % (value.strftime("%Y-%m-%d %H:%M:%S"), value.microsecond)
 
 
-class LobType(Type):
-    """
-    Parse LOB from payload.
-    """
-    type_code = (type_codes.CLOB, type_codes.NCLOB, type_codes.BLOB)
-
+class MixinLobType(object):
+    """Base class for all LOB types"""
     @classmethod
     def from_resultset(cls, payload, connection=None):
         # to avoid circular import the 'lobs' module has to be imported here:
         from . import lobs
-        return lobs.from_payload(payload, connection)
+        return lobs.from_payload(cls.type_code, payload, connection)
+
+
+class ClobType(Type, MixinLobType):
+    """CLOB type class"""
+    type_code = type_codes.CLOB
+
+
+class NClobType(Type, MixinLobType):
+    """NCLOB type class"""
+    type_code = type_codes.NCLOB
+
+
+class BlobType(Type, MixinLobType):
+    """BLOB type class"""
+    type_code = type_codes.BLOB
 
 
 def escape(value):
