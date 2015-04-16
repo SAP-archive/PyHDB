@@ -59,4 +59,7 @@ setup(
         'Topic :: Software Development',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
+    package_data={
+        'pyhdb': ['logging.conf']
+    }
 )
