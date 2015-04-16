@@ -103,19 +103,7 @@ def test_blob_seek_triggers_further_loading(_read_missing_lob_data_from_db):
 
 
 def test_parse_null_blob():
-    """Parse a BLOB which is NULL"""
+    """Parse a BLOB which is NULL -> a None object is expected"""
     payload = io.BytesIO(NULL_BLOB_HEADER)
     lob = lobs.from_payload(type_codes.BLOB, payload, None)
-    assert isinstance(lob, lobs.Blob)  # check for correct instance
-    assert lob.lob_header.lob_type == lob.lob_header.BLOB_TYPE
-    assert lob.lob_header.options & lob.lob_header.LOB_OPTION_ISNULL
-
-
-def test_null_blob_io_functions():
-    """Test that io functionality (read/getvalue()/...) of NULL blob also behave"""
-    payload = io.BytesIO(NULL_BLOB_HEADER)
-    lob = lobs.from_payload(type_codes.BLOB, payload, None)
-    assert lob.tell() is None
-    assert lob.read(10) is None
-    lob.seek(20)  # is accepted, but ignored
-    assert lob.tell() is None
+    assert lob is None

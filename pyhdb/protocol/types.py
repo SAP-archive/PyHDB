@@ -25,6 +25,7 @@ from pyhdb.protocol.constants import type_codes
 from pyhdb.exceptions import InterfaceError
 from pyhdb._compat import PY2, PY3, with_metaclass, iter_range, int_types, \
     string_types, byte_type, text_type
+from pyhdb.protocol.headers import LobHeader
 
 
 recv_log = logging.getLogger('receive')
@@ -287,7 +288,7 @@ class Date(Type):
 
     type_code = type_codes.DATE
     python_type = datetime.date
-    _struct = struct.Struct("<hbh")
+    _struct = struct.Struct("<HBH")
 
     @classmethod
     def from_resultset(cls, payload, connection=None):

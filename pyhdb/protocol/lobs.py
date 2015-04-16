@@ -31,25 +31,26 @@ def from_payload(type_code, payload, connection):
     Depending on lob type a BLOB, CLOB, or NCLOB instance will be returned.
     """
     lob_header = LobHeader(payload)
-    data = payload.read(lob_header.chunk_length) if not lob_header.isnull() else None
-    # print 'raw lob data: %r' % data
-    LobClass = LOB_TYPE_CODE_MAP[type_code]
-    lob = LobClass(connection, lob_header, init_value=data)
-    recv_log.debug('Lob Header %s' % str(lob))
+    if lob_header.isnull():
+        lob = None
+    else:
+        data = payload.read(lob_header.chunk_length)
+        # print 'raw lob data: %r' % data
+        LobClass = LOB_TYPE_CODE_MAP[type_code]
+        lob = LobClass(data, lob_header, connection)
+        recv_log.debug('Lob Header %s' % str(lob))
     return lob
 
 
 class Lob(object):
     """Base class for all LOB classes"""
 
-    IO_Class = io.BytesIO  # should be overridden in subclass
     EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK = 1024
 
-    def __init__(self, connection, lob_header, init_value=''):
+    def __init__(self, init_value='', lob_header=None, connection=None):
         self.connection = connection
         self.lob_header = lob_header
         self.data = self._decode_data(init_value)
-        # self.data = self.IO_Class(init_value)
         self.data.seek(0)
         if not self.isnull:
             self._lob_length = len(self.data.getvalue())
@@ -154,7 +155,6 @@ class Lob(object):
 
 class Blob(Lob):
     """Instance of this class will be returned for a BLOB object in a db result"""
-    IO_Class = io.BytesIO
 
     def _decode_data(self, init_value):
         """Decode binary lob data. In this case (BLOB) no conversion is necessary"""
@@ -163,21 +163,19 @@ class Blob(Lob):
 
 class Clob(Lob):
     """Instance of this class will be returned for a CLOB object in a db result"""
-    IO_Class = io.StringIO
 
     def _decode_data(self, init_value):
         """Decode binary lob data. In this case (BLOB) no conversion is necessary"""
-        unicode_value = None if init_value is None else init_value.decode('utf8')
+        unicode_value = init_value.decode('ascii')
         return io.StringIO(unicode_value)
 
 
 class NClob(Lob):
     """Instance of this class will be returned for a NCLOB object in a db result"""
-    IO_Class = io.StringIO
 
     def _decode_data(self, init_value):
         """Decode binary lob data. Decode utf8 into unicode in this case"""
-        unicode_value = None if init_value is None else init_value.decode('utf8')
+        unicode_value = init_value.decode('utf8')
         return io.StringIO(unicode_value)
 
 
