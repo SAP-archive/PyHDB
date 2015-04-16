@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright 2014 SAP SE.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,11 +16,14 @@
 
 import io
 import mock
+import pytest
 from pyhdb.protocol import lobs
 from pyhdb.protocol.types import type_codes
 
+# maximum length of lob data from result set:
+MAX_LOB_DATA_LENGTH = 1024
 
-# Fixture binary data for reading 2000 bytes blob:
+# Fixture: binary data for reading 2000 bytes blob:
 BLOB_HEADER = b'\x01\x02\x00\x00\xd0\x07\x00\x00\x00\x00\x00\x00\xd0\x07\x00\x00' \
               b'\x00\x00\x00\x00\x00\x00\x00\x00\xb2\xb9\x04\x00\x00\x04\x00\x00'
 BLOB_DATA = 'qXHUi0ChHWEWUgSBYhq3LvrgtOOjgGMubxPs3nbfUsRrFKVs0uTgQB4eJtQnPFjG1ZD2rB6qXt0QKvOpyRurpAWYWAH6Q3O2iaGA' \
@@ -42,41 +47,61 @@ BLOB_DATA = 'qXHUi0ChHWEWUgSBYhq3LvrgtOOjgGMubxPs3nbfUsRrFKVs0uTgQB4eJtQnPFjG1ZD
             'IYPguIyGDs8xz4QvMjV4SPGWxkRrCrZgbCbO2t2PM6czC49c5FLbw3QX3UzinDaOumhJtzMpmAPUVjzX0cPiDalsmkxIb1Razz4e' \
             '1cdPATFx3vFelO8KOMurkMxFZKB0tWDjUWOGuQ4hiBu29TXAbR7Q9sxj8erB8omv5R4JyHivVz4DdQ6rWrVccsepgCI1Oydmfy6G'
 
-# Fixture binary data for reading null blob:
-NULL_BLOB_HEADER = b'\x01\x01'
+# Fixture: binary data for reading 52 character CLOB (ascii character LOB):
+CLOB_HEADER = b'\x00\x06\x00\x00\x34\x00\x00\x00\x00\x00\x00\x00\x34\x00\x00\x00' \
+              b'\x00\x00\x00\x00\x00\x00\x00\x00\xae\xc9\x04\x00\x34\x00\x00\x00'
+CLOB_DATA = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+# Fixture; binary data for reading 52 character NCLOB (unicode character LOB):
+NCLOB_HEADER = b'\x00\x06\x00\x00\x34\x00\x00\x00\x00\x00\x00\x00\x9c\x00\x00\x00' \
+               b'\x00\x00\x00\x00\x00\x00\x00\x00\xd1\xc9\x04\x00\x9c\x00\x00\x00'
+NCLOB_DATA = u'朱の子ましける日におえつかうまつらずはしにさはる事侍りてして延光雀院朝臣につかは野の若菜も日は小松引もさ'
+BIN_NCLOB_DATA = NCLOB_DATA.encode('utf8')
+
+lob_params = pytest.mark.parametrize("type_code, lob_header, bin_lob_data, lob_data", [
+    (type_codes.BLOB, BLOB_HEADER, BLOB_DATA, BLOB_DATA),
+    (type_codes.CLOB, CLOB_HEADER, CLOB_DATA, CLOB_DATA),
+    (type_codes.NCLOB, NCLOB_HEADER, BIN_NCLOB_DATA, NCLOB_DATA),
+])
 
 
-def test_parse_blob():
-    """Parse a BLOB with 2000 random items (bytes/chars)"""
-    payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
+# ### Test of reading of LOB data/parsing header ##################################################
+
+@lob_params
+def test_read_lob(type_code, lob_header, bin_lob_data, lob_data):
+    """Read/parse a LOB with given payload (data)"""
+    payload = io.BytesIO(lob_header + bin_lob_data)
     lob = lobs.from_payload(type_codes.BLOB, payload, None)
     assert isinstance(lob, lobs.Blob)  # check for correct instance
-    assert lob.lob_header.lob_type == lob.lob_header.BLOB_TYPE
+    assert lob.lob_header.lob_type in (0, lob.lob_header.LOB_TYPES[type_code])
     assert lob.lob_header.options & lob.lob_header.LOB_OPTION_DATAINCLUDED
-    assert lob.lob_header.char_length == len(BLOB_DATA)
-    assert lob.lob_header.byte_length == len(BLOB_DATA)
-    assert lob.lob_header.locator_id == BLOB_HEADER[20:28]
-    assert lob.lob_header.chunk_length == 1024  # default length of lob data read initially
-    assert lob.lob_header.total_lob_length == len(BLOB_DATA)
-    assert lob.data.getvalue() == BLOB_DATA[:1024]
+    assert lob.lob_header.char_length == len(lob_data)
+    assert lob.lob_header.byte_length == len(bin_lob_data)
+    assert lob.lob_header.locator_id == lob_header[20:28]
+    assert lob.lob_header.chunk_length == min(len(bin_lob_data), MAX_LOB_DATA_LENGTH)
+    assert lob.lob_header.total_lob_length == len(lob_data)
+    assert lob.data.getvalue() == bin_lob_data[:1024]
 
 
-def test_blob_io_functions():
+@lob_params
+def test_blob_io_functions(type_code, lob_header, bin_lob_data, lob_data):
     """Test that io functionality (read/seek/getvalue()/...) works fine
-    Stay below the 1024 item range when reading to avoid loading of additional lob data from DB.
-    This feature is tested in a separate unittest below.
+    Stay below the 1024 item range when reading to avoid lazy loading of additional lob data from DB.
+    This feature is tested in a separate unittest.
     """
-    payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
-    lob = lobs.from_payload(type_codes.BLOB, payload, None)
+    payload = io.BytesIO(lob_header + bin_lob_data)
+    lob = lobs.from_payload(type_code, payload, None)
     assert lob.tell() == 0   # should be at start of lob initially
-    assert lob.read(10) == BLOB_DATA[:10]
+    assert lob.read(10) == lob_data[:10]
     assert lob.tell() == 10
     lob.seek(20)
     assert lob.tell() == 20
-    assert lob.read(10) == BLOB_DATA[20:30]
-    assert lob.read(10) == BLOB_DATA[30:40]
+    assert lob.read(10) == lob_data[20:30]
+    assert lob.read(10) == lob_data[30:40]
     assert lob.tell() == 40
 
+
+# ### Test of lazy loading of LOB data ############################################################
 
 @mock.patch('pyhdb.protocol.lobs.Lob._read_missing_lob_data_from_db')
 def test_blob_read_triggers_further_loading(_read_missing_lob_data_from_db):
@@ -102,8 +127,16 @@ def test_blob_seek_triggers_further_loading(_read_missing_lob_data_from_db):
     _read_missing_lob_data_from_db.assert_called_once_with(1024, 100 + lobs.Lob.EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK)
 
 
-def test_parse_null_blob():
+# ### Test NULL LOBs ##############################################################################
+
+@pytest.mark.parametrize("type_code, null_lob_header", [
+    (type_codes.BLOB, b'\x01\x01'),
+    (type_codes.CLOB, b'\x02\x01'),
+    (type_codes.NCLOB, b'\x03\x01'),
+    (type_codes.NCLOB, b'\x00\x01'),  # test for additional case where LOB_TYPE has buggy value or zero
+])
+def test_parse_null_blob(type_code, null_lob_header):
     """Parse a BLOB which is NULL -> a None object is expected"""
-    payload = io.BytesIO(NULL_BLOB_HEADER)
-    lob = lobs.from_payload(type_codes.BLOB, payload, None)
+    payload = io.BytesIO(null_lob_header)
+    lob = lobs.from_payload(type_code, payload, None)
     assert lob is None

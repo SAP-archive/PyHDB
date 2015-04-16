@@ -14,7 +14,7 @@
 
 import io
 import logging
-from headers import LobHeader
+from headers import ReadLobHeader
 from pyhdb.protocol.base import RequestSegment
 from pyhdb.protocol.constants import message_types, type_codes
 from pyhdb.protocol.parts import ReadLobRequest
@@ -30,7 +30,7 @@ def from_payload(type_code, payload, connection):
     """Generator function to create lob from payload.
     Depending on lob type a BLOB, CLOB, or NCLOB instance will be returned.
     """
-    lob_header = LobHeader(payload)
+    lob_header = ReadLobHeader(payload)
     if lob_header.isnull():
         lob = None
     else:

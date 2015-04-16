@@ -20,7 +20,7 @@ from pyhdb.protocol import constants
 from pyhdb.protocol.base import Part, PartMeta
 from pyhdb.exceptions import InterfaceError, DatabaseError
 from pyhdb._compat import is_text, iter_range, with_metaclass
-from pyhdb.protocol.headers import LobHeader
+from pyhdb.protocol.headers import ReadLobHeader
 
 
 class Fields(object):
@@ -303,19 +303,19 @@ class ReadLobReply(Part):
     @classmethod
     def unpack_data(cls, argument_count, payload):
         locator_id, options = cls.part_struct_p1.unpack(payload.read(cls.part_struct_p1.size))
-        isNull = options & LobHeader.LOB_OPTION_ISNULL
+        isNull = options & ReadLobHeader.LOB_OPTION_ISNULL
         if isNull:
             # returned LOB is NULL
             lobdata = isDataIncluded = isLastData = None
             isNull = True
         else:
             chunklength, filler = cls.part_struct_p2.unpack(payload.read(cls.part_struct_p2.size))
-            isDataIncluded = options & LobHeader.LOB_OPTION_DATAINCLUDED
+            isDataIncluded = options & ReadLobHeader.LOB_OPTION_DATAINCLUDED
             if isDataIncluded:
                 lobdata = payload.read()
             else:
                 lobdata = ''
-            isLastData = options & LobHeader.LOB_OPTION_LASTDATA
+            isLastData = options & ReadLobHeader.LOB_OPTION_LASTDATA
             assert len(lobdata) == chunklength
         # print 'realobreply unpack data called with args', len(lobdata), isDataIncluded, isLastData
         return lobdata, isDataIncluded, isLastData, isNull
@@ -338,13 +338,12 @@ class Parameters(Part):
             try:
                 if type_code in types.String.type_code:
                     pfield = types.by_type_code[type_code].prepare(value, type_code)
+                elif value is None:
+                    pfield = types.NoneType.prepare(type_code)
                 else:
                     pfield = types.by_type_code[type_code].prepare(value)
-
-                print type_code, parameter[3], len(pfield), list(pfield)
             except KeyError:
                 raise InterfaceError("Prepared statement parameter datatype not supported: %d" % type_code)
-
             payload += pfield
         return 1, payload
 

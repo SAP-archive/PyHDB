@@ -25,7 +25,7 @@ from pyhdb.protocol.constants import type_codes
 from pyhdb.exceptions import InterfaceError
 from pyhdb._compat import PY2, PY3, with_metaclass, iter_range, int_types, \
     string_types, byte_type, text_type
-from pyhdb.protocol.headers import LobHeader
+from pyhdb.protocol.headers import WriteLobHeader
 
 
 recv_log = logging.getLogger('receive')
@@ -88,6 +88,12 @@ class NoneType(Type):
     @classmethod
     def to_sql(cls, _):
         return text_type("NULL")
+
+    @classmethod
+    def prepare(cls, type_code):
+        """Prepare a binary NULL value for given type code"""
+        # This is achieved by setting the MSB of the type_code byte to 1
+        return struct.pack('<B', type_code | 0x80)
 
 
 class _IntType(Type):
@@ -396,27 +402,51 @@ class Timestamp(Type):
 
 
 class MixinLobType(object):
-    """Base class for all LOB types"""
+    """Mixin class for all LOB types"""
     @classmethod
     def from_resultset(cls, payload, connection=None):
         # to avoid circular import the 'lobs' module has to be imported here:
         from . import lobs
         return lobs.from_payload(cls.type_code, payload, connection)
 
+    @classmethod
+    def prepare(cls, value):
+        value = cls.encode_value(value)
+        hstruct = WriteLobHeader.header_struct
+        options = WriteLobHeader.LOB_OPTION_DATAINCLUDED | WriteLobHeader.LOB_OPTION_LASTDATA
+        pfield = hstruct.pack(cls.type_code, options, len(value), hstruct.size)
+        pfield += value
+        return pfield
+
 
 class ClobType(Type, MixinLobType):
     """CLOB type class"""
     type_code = type_codes.CLOB
+
+    @classmethod
+    def encode_value(cls, value):
+        """Return value if it is a string, otherwise properly encode unicode to binary ascii string"""
+        return value if isinstance(value, str) else value.encode('ascii')
 
 
 class NClobType(Type, MixinLobType):
     """NCLOB type class"""
     type_code = type_codes.NCLOB
 
+    @classmethod
+    def encode_value(cls, value):
+        """Return value if it is a string, otherwise properly encode unicode to binary unicode string"""
+        return value if isinstance(value, str) else value.encode('utf8')
+
 
 class BlobType(Type, MixinLobType):
     """BLOB type class"""
     type_code = type_codes.BLOB
+
+    @classmethod
+    def encode_value(cls, value):
+        """Return value if it is a string, otherwise properly encode unicode to binary unicode string"""
+        return value if isinstance(value, str) else value.encode('utf8')
 
 
 def escape(value):

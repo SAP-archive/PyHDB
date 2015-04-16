@@ -17,7 +17,7 @@ import binascii
 
 from pyhdb.protocol.base import RequestSegment
 from pyhdb.protocol.types import escape_values, by_type_code
-from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, Parameters, ReadLobRequest
+from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, Parameters
 from pyhdb.protocol.constants import message_types, function_codes, part_kinds
 from pyhdb.exceptions import ProgrammingError, InterfaceError, DatabaseError
 from pyhdb._compat import iter_range
@@ -58,7 +58,7 @@ class PreparedStatement(object):
                 self._param_values[param[3]] = None
         else:
             # parameters by sequence
-            self._param_values = [None] * (1+len(parameters)) # sequence starts from 1, 2 ...; 0 not used
+            self._param_values = [None] * (1+len(parameters))  # sequence starts from 1, 2 ...; 0 not used
 
     @property
     def statement_id(self):
@@ -143,8 +143,7 @@ class Cursor(object):
             )
         ).send()
 
-        _result = {}
-        _result['result_metadata'] = None # not sent for INSERT
+        _result = {'result_metadata': None}  # not sent for INSERT
         for _part in response.segments[0].parts:
             if _part.kind == part_kinds.STATEMENTID:
                 statement_id = _part.statement_id
@@ -269,15 +268,10 @@ class Cursor(object):
         description = []
         column_types = []
         for column in result_metadata.columns:
-            description.append(
-                (column[8], column[1], None, column[3], column[2], None,
-                 column[0] & 0b10)
-            )
+            description.append((column[8], column[1], None, column[3], column[2], None, column[0] & 0b10))
 
             if column[1] not in by_type_code:
-                raise InterfaceError(
-                    "Unknown column data type: %s" % column[1]
-                )
+                raise InterfaceError("Unknown column data type: %s" % column[1])
             column_types.append(by_type_code[column[1]])
 
         return tuple(description), tuple(column_types)
