@@ -254,7 +254,7 @@ class Cursor(object):
 
         for part in parts:
             if part.kind == part_kinds.RESULTSETID:
-                self._id = part.value
+                self._resultset_id = part.value
             elif part.kind == part_kinds.RESULTSET:
                 # Cleanup buffer
                 del self._buffer
@@ -272,7 +272,6 @@ class Cursor(object):
 
     def _handle_prepared_insert(self, parts):
         for part in parts:
-            print part.kind
             if part.kind == part_kinds.ROWSAFFECTED:
                 self.rowcount = part.values[0]
             elif part.kind == part_kinds.TRANSACTIONFLAGS:
@@ -284,21 +283,22 @@ class Cursor(object):
         self._executed = True
 
     def _handle_select(self, parts):
+        """Handle result from select command"""
+        resultset_metadata, resultset_id, statement_context, result_set = parts
+
         self.rowcount = -1
+        self.description, self._column_types = self._handle_result_metadata(resultset_metadata)
 
-        # result metadata
-        self.description, self._column_types = self._handle_result_metadata(parts[0])
-
-        self._id = parts[1].value
+        self._resultset_id = resultset_id.value
 
         # Cleanup buffer
         del self._buffer
         self._buffer = deque()
 
-        for row in self._unpack_rows(parts[3].payload, parts[3].rows):
+        for row in self._unpack_rows(result_set.payload, result_set.rows):
             self._buffer.append(row)
 
-        self._received_last_resultset_part = parts[3].attribute & 1
+        self._received_last_resultset_part = result_set.attribute & 1
         self._executed = True
 
     def _handle_insert(self, parts):
@@ -330,7 +330,7 @@ class Cursor(object):
         response = self._connection.Message(
             RequestSegment(
                 message_types.FETCHNEXT,
-                (ResultSetId(self._id), FetchSize(_missing))
+                (ResultSetId(self._resultset_id), FetchSize(_missing))
             )
         ).send()
 

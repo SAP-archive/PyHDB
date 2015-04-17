@@ -21,6 +21,13 @@ from pyhdb.protocol.base import Message, RequestSegment, Part, part_mapping
 from pyhdb.exceptions import InterfaceError
 
 
+class DummySegment(RequestSegment):
+    """Used as pseudo segment instance for some tests"""
+    @staticmethod
+    def pack(payload, **kwargs):
+        payload.write(b"\x00" * 10)
+
+
 class TestBaseMessage(object):
 
     def test_message_init_without_segment(self):
@@ -79,20 +86,18 @@ class TestBaseMessage(object):
     def test_payload_pack(self, autocommit):
         connection = Connection("localhost", 30015, "Fuu", "Bar", autocommit=autocommit)
 
-        segment = mock.Mock()
-        segment.pack.return_value = b"\x00" * 10
+        msg = Message(connection, [DummySegment(None)])
+        payload = BytesIO()
+        msg.build_payload(payload)
 
-        msg = Message(connection, [segment])
-        assert msg.payload() == b"\x00" * 10
-        segment.pack.assert_called_once_with(commit=autocommit)
+        assert payload.getvalue() == b"\x00" * 10
 
     def test_pack(self):
         connection = Connection("localhost", 30015, "Fuu", "Bar")
-        segment = mock.Mock()
-        segment.pack.return_value = b"\x00" * 10
 
-        msg = Message(connection, [segment])
-        packed = msg.pack()
+        msg = Message(connection, [DummySegment(None)])
+        payload = msg.pack()
+        packed = payload.getvalue()
         assert isinstance(packed, bytes)
 
         # Session id
@@ -115,7 +120,6 @@ class TestBaseMessage(object):
 
         # payload
         assert packed[32:42] == b"\x00" * 10
-        assert segment.pack.called
 
 
 class TestReceivedMessage(object):
