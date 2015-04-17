@@ -50,7 +50,7 @@ class Message(object):
         elif isinstance(segments, (list, tuple)):
             self.segments = segments
         else:
-            self.segments = [segments,]
+            self.segments = [segments]
 
     @property
     def session_id(self):
@@ -70,7 +70,6 @@ class Message(object):
             self._packet_count = self.connection.get_next_packet_count()
         return self._packet_count
 
-    @property
     def payload(self):
         """
         Build payload of message.
@@ -84,7 +83,7 @@ class Message(object):
         """
         Pack message to binary stream.
         """
-        payload = self.payload
+        payload = self.payload()
 
         packet_length = len(payload)
         total_space = MAX_MESSAGE_SIZE - MESSAGE_HEADER_SIZE
@@ -121,6 +120,7 @@ class Message(object):
         reply._packet_count = header[1]
         return reply
 
+
 class BaseSegment(object):
 
     # I4 I4 I2 I2 I1
@@ -132,7 +132,7 @@ class BaseSegment(object):
         elif isinstance(parts, (list, tuple)):
             self.parts = parts
         else:
-            self.parts = [parts,]
+            self.parts = [parts]
 
     def payload(self):
         remaining_size = MAX_SEGMENT_SIZE - SEGMENT_HEADER_SIZE
@@ -167,6 +167,10 @@ class BaseSegment(object):
             self.kind
         ) + self.pack_additional_header(**kwargs) + payload
 
+    def pack_additional_header(self, **kwargs):
+        raise NotImplemented
+
+
 class RequestSegment(BaseSegment):
 
     kind = 1
@@ -187,6 +191,7 @@ class RequestSegment(BaseSegment):
             int(kwargs.get('commit', 0)),
             self.command_options
         )
+
 
 class ReplySegment(BaseSegment):
 
@@ -263,25 +268,22 @@ class ReplySegment(BaseSegment):
     def pack(self):
         raise NotImplemented
 
+
 part_mapping = WeakValueDictionary()
+
 
 class PartMeta(type):
     """
     Meta class for part classes which also add them into part_mapping.
     """
 
-    def __new__(cls, name, bases, attrs):
-        part_class = super(PartMeta, cls).__new__(cls, name, bases, attrs)
-        if not hasattr(part_class, "kind"):
-            return part_class
-
-        if not -128 <= part_class.kind <= 127:
-            raise InterfaceError(
-                "%s part kind must be between -128 and 127" %
-                part_class.__name__
-            )
-
-        part_mapping[part_class.kind] = part_class
+    def __new__(mcs, name, bases, attrs):
+        part_class = super(PartMeta, mcs).__new__(mcs, name, bases, attrs)
+        if part_class.kind:
+            if not -128 <= part_class.kind <= 127:
+                raise InterfaceError("%s part kind must be between -128 and 127" % part_class.__name__)
+            # Register new part class is registry dictionary for later lookup:
+            part_mapping[part_class.kind] = part_class
         return part_class
 
 
@@ -289,6 +291,7 @@ class Part(with_metaclass(PartMeta, object)):
 
     header_struct = struct.Struct('<bbhiii')
     attribute = 0
+    kind = None
 
     # Attribute to get source of part
     source = 'client'
@@ -305,6 +308,9 @@ class Part(with_metaclass(PartMeta, object)):
             self.kind, self.attribute, arguments_count, 0,
             payload_length, remaining_size
         ) + payload
+
+    def pack_data(self):
+        raise NotImplemented()
 
     @classmethod
     def unpack_from(cls, payload, expected_parts):
@@ -326,7 +332,7 @@ class Part(with_metaclass(PartMeta, object)):
             part_payload = BytesIO(payload.read(part_payload_size))
 
             try:
-                PartClass = part_mapping[part_header[0]]
+                _PartClass = part_mapping[part_header[0]]
             except KeyError:
                 raise InterfaceError(
                     "Unknown part kind %s" % part_header[0]
@@ -335,15 +341,15 @@ class Part(with_metaclass(PartMeta, object)):
             msg = 'Part Header (%d/%d, 16 bytes): partkind: %s(%d), ' \
                   'partattributes: %d, argumentcount: %d, bigargumentcount: %d'\
                   ', bufferlength: %d, buffersize: %d'
-            debug(msg, num_parts+1, expected_parts, PartClass.__name__,
+            debug(msg, num_parts+1, expected_parts, _PartClass.__name__,
                   *part_header[:6])
             debug('Read %d bytes payload for part %d',
                   part_payload_size, num_parts + 1)
-            init_arguments = PartClass.unpack_data(
+            init_arguments = _PartClass.unpack_data(
                 part_header[2], part_payload
             )
             debug('Part data: %s', init_arguments)
-            part = PartClass(*init_arguments)
+            part = _PartClass(*init_arguments)
             part.attribute = part_header[1]
             part.source = 'server'
 

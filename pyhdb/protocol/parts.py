@@ -57,9 +57,9 @@ class Fields(object):
 
 class OptionPartMeta(PartMeta):
 
-    def __new__(cls, name, bases, attrs):
-        part_class = super(OptionPartMeta, cls).__new__(
-            cls, name, bases, attrs
+    def __new__(mcs, name, bases, attrs):
+        part_class = super(OptionPartMeta, mcs).__new__(
+            mcs, name, bases, attrs
         )
         if hasattr(part_class, "option_definition"):
             part_class.option_identifier = dict([

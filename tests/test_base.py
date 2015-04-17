@@ -20,7 +20,8 @@ from pyhdb.client import Connection
 from pyhdb.protocol.base import Message, RequestSegment, Part, part_mapping
 from pyhdb.exceptions import InterfaceError
 
-class TestBaseMessage():
+
+class TestBaseMessage(object):
 
     def test_message_init_without_segment(self):
         connection = Connection("localhost", 30015, "Fuu", "Bar")
@@ -76,15 +77,13 @@ class TestBaseMessage():
 
     @pytest.mark.parametrize("autocommit", [False, True])
     def test_payload_pack(self, autocommit):
-        connection = Connection(
-            "localhost", 30015, "Fuu", "Bar", autocommit=autocommit
-        )
+        connection = Connection("localhost", 30015, "Fuu", "Bar", autocommit=autocommit)
 
         segment = mock.Mock()
         segment.pack.return_value = b"\x00" * 10
 
         msg = Message(connection, [segment])
-        assert msg.payload == b"\x00" * 10
+        assert msg.payload() == b"\x00" * 10
         segment.pack.assert_called_once_with(commit=autocommit)
 
     def test_pack(self):
@@ -119,7 +118,7 @@ class TestBaseMessage():
         assert segment.pack.called
 
 
-class TestReceivedMessage():
+class TestReceivedMessage(object):
 
     def test_message_use_received_session_id(self):
         connection = Connection("localhost", 30015, "Fuu", "Bar")
@@ -137,6 +136,7 @@ class TestReceivedMessage():
 
         assert msg.packet_count == 12345
         assert not get_next_packet_count.called
+
 
 class DummyPart(Part):
     """
@@ -158,7 +158,8 @@ class DummyPart(Part):
         assert payload == b"\x00" * argument_count
         return argument_count,
 
-class TestBasePart():
+
+class TestBasePart(object):
 
     def test_pack_dummy_part(self):
         part = DummyPart(10)
@@ -228,7 +229,8 @@ class TestBasePart():
         with pytest.raises(InterfaceError):
             tuple(Part.unpack_from(packed, 1))
 
-class TestPartMetaClass():
+
+class TestPartMetaClass(object):
 
     def test_part_kind_mapping(self):
         assert 125 not in part_mapping
