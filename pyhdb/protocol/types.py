@@ -408,12 +408,13 @@ class MixinLobType(object):
         return lobs.from_payload(cls.type_code, payload, connection)
 
     @classmethod
-    def prepare(cls, value):
-        value = cls.encode_value(value)
+    def prepare(cls, value, length=0, position=0):
+        """Prepare Lob header.
+        Note that the actual lob data is NOT written here but appended after the parameter block!
+        """
         hstruct = WriteLobHeader.header_struct
         options = WriteLobHeader.LOB_OPTION_DATAINCLUDED | WriteLobHeader.LOB_OPTION_LASTDATA
-        pfield = hstruct.pack(cls.type_code, options, len(value), hstruct.size)
-        pfield += value
+        pfield = hstruct.pack(cls.type_code, options, length, position)
         return pfield
 
 

@@ -46,35 +46,27 @@ class Lob(object):
     """Base class for all LOB classes"""
 
     EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK = 1024
+    type_code = None
 
     def __init__(self, init_value='', lob_header=None, connection=None):
         self.connection = connection
         self.lob_header = lob_header
         self.data = self._decode_data(init_value)
         self.data.seek(0)
-        if not self.isnull:
-            self._lob_length = len(self.data.getvalue())
-            # assert self._lob_length == self.lob_header.chunk_length  # just to be sure ;-)
-
-    @property
-    def isnull(self):
-        """Return whether LOB is null or not"""
-        return self.lob_header.isnull()
+        self._lob_length = len(self.data.getvalue())
+        # assert self._lob_length == self.lob_header.chunk_length  # just to be sure ;-)
 
     def _decode_data(self, init_value):
         raise NotImplementedError()
 
     def tell(self):
         """Return position of pointer in lob buffer"""
-        return self.data.tell() if not self.isnull else None
+        return self.data.tell()
 
     def seek(self, offset, whence=SEEK_SET):
         """Seek pointer in lob data buffer to requested position.
         Might trigger further loading of data from the database if the pointer is beyond currently read data.
         """
-        if self.isnull:
-            return
-
         # A nice trick is to (ab)use BytesIO.seek() to go to the desired position for easier calculation.
         # This will not add any data to the buffer however - very convenient!
         new_pos = self.data.seek(offset, whence)
@@ -98,9 +90,6 @@ class Lob(object):
         Might trigger further loading of data from the database if the number of items requested for
         reading is larger than what is currently buffered.
         """
-        if self.isnull:
-            return None
-
         pos = self.tell()
         num_items_to_read = n if n != -1 else self.lob_header.total_lob_length - pos
         # calculate the position of the file pointer after data was read:
@@ -145,38 +134,52 @@ class Lob(object):
 
     def getvalue(self):
         """Return all currently available lob data (might be shorter than the one in the database)"""
-        if self.isnull:
-            return None
-        return self.data.getvalue() if not self.isnull else None
+        return self.data.getvalue()
 
     def __str__(self):
         return '%s: %s' % (self.__class__.__name__, str(self.lob_header))
 
+    def encode(self):
+        """Encode lob data into binary format"""
+        raise NotImplemented()
+
 
 class Blob(Lob):
     """Instance of this class will be returned for a BLOB object in a db result"""
+    type_code = type_codes.BLOB
 
     def _decode_data(self, init_value):
         """Decode binary lob data. In this case (BLOB) no conversion is necessary"""
         return io.BytesIO(init_value)
 
+    def encode(self):
+        return self.getvalue()
+
 
 class Clob(Lob):
     """Instance of this class will be returned for a CLOB object in a db result"""
+    type_code = type_codes.CLOB
 
     def _decode_data(self, init_value):
         """Decode binary lob data. In this case (BLOB) no conversion is necessary"""
         unicode_value = init_value.decode('ascii')
         return io.StringIO(unicode_value)
 
+    def encode(self):
+        return self.getvalue().encode('ascii')
+
 
 class NClob(Lob):
     """Instance of this class will be returned for a NCLOB object in a db result"""
+    type_code = type_codes.NCLOB
 
     def _decode_data(self, init_value):
         """Decode binary lob data. Decode utf8 into unicode in this case"""
         unicode_value = init_value.decode('utf8')
         return io.StringIO(unicode_value)
+
+    def encode(self):
+        return self.getvalue().encode('utf8')
 
 
 LOB_TYPE_CODE_MAP = {

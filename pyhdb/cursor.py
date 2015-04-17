@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections import deque, namedtuple
+import collections
 
 from pyhdb.protocol.base import RequestSegment
 from pyhdb.protocol.types import escape_values, by_type_code
@@ -59,32 +59,30 @@ class PreparedStatement(object):
         self.statement_id = statement_id
         self._params_metadata = params_metadata
         self.result_metadata_part = result_metadata_part
-        self._param_values = None
+        self.parameters = collections.deque()
 
-    @property
-    def parameters(self):
-        """Get all parameters' values in form of a list with named tuples"""
-        _Parameter = namedtuple('Parameter', 'id datatype length value')
-        r = [_Parameter(p.id, p.datatype, p.length, self._param_values[p.id]) for p in self._params_metadata]
-        return r
-
-    def set_parameters(self, param_values):
+    def set_parameters(self, multi_row_parameters):
         """Store parameters in object. Make some basic checks that at least the number of parameters is correct."""
-        if not isinstance(param_values, (list, tuple)):
-            raise ProgrammingError("Prepared statement parameters supplied as %s, shall be list or tuple." %
-                                   str(type(param_values)))
+        _Parameter = collections.namedtuple('Parameter', 'id type_code length value')
+        self.parameters = collections.deque()  # make sure list is empty
 
-        if len(param_values) != len(self._params_metadata):
-            raise ProgrammingError("Prepared statement parameters expected %d supplied %d." %
-                                   (len(self._params_metadata), len(param_values)))
-        self._param_values = param_values[:]
+        for parameters in multi_row_parameters:
+            if not isinstance(parameters, (list, tuple)):
+                raise ProgrammingError("Prepared statement parameters supplied as %s, shall be list or tuple." %
+                                       str(type(parameters)))
+
+            if len(parameters) != len(self._params_metadata):
+                raise ProgrammingError("Prepared statement parameters expected %d supplied %d." %
+                                       (len(self._params_metadata), len(parameters)))
+            row_params = [_Parameter(p.id, p.datatype, p.length, parameters[p.id]) for p in self._params_metadata]
+            self.parameters.append(row_params)
 
 
 class Cursor(object):
     """Database cursor class"""
     def __init__(self, connection):
         self._connection = connection
-        self._buffer = deque()
+        self._buffer = collections.deque()
         self._received_last_resultset_part = False
         self._executed = None
 
@@ -130,27 +128,57 @@ class Cursor(object):
                                                                     params_metadata, result_metadata_part)
         return statement_id
 
-    def execute_prepared(self, prepared_statement, parameters=None):
+    def execute_prepared(self, prepared_statement, multi_row_parameters):
+        """
+        :param prepared_statement: A PreparedStatement instance
+        :param multi_row_parameters: A list/tuple containing list/tuples of parameters (for multiple rows)
+        """
         self._check_closed()
 
-        if parameters:
-            prepared_statement.set_parameters(parameters)
+        # Convert parameters into a deque of lists with parameters as named tuples (incl. some meta data):
+        prepared_statement.set_parameters(multi_row_parameters)
 
-        # Request resultset
+        while prepared_statement.parameters:
+            # Request resultset
+            response = self._connection.Message(
+                RequestSegment(
+                    message_types.EXECUTE,
+                    (StatementId(prepared_statement.statement_id),
+                     Parameters(prepared_statement.parameters))
+                )
+            ).send()
+
+            parts = response.segments[0].parts
+            function_code = response.segments[0].function_code
+            if function_code == function_codes.SELECT:
+                self._handle_prepared_select(parts, prepared_statement.result_metadata_part)
+            elif function_code in function_codes.DML:
+                self._handle_prepared_insert(parts)
+            elif function_code == function_codes.DDL:
+                # No additional handling is required
+                pass
+            else:
+                raise InterfaceError("Invalid or unsupported function code received")
+
+    def _execute_direct(self, operation):
+        """Execute statements which are not going through 'prepare_statement
+        (aka 'direct execution').
+        Because: Either their have no parameters, or Python's string expansion
+                 has been applied to the SQL statement.
+        """
         response = self._connection.Message(
             RequestSegment(
-                message_types.EXECUTE,
-                (StatementId(prepared_statement.statement_id),
-                 Parameters(prepared_statement.parameters))
+                message_types.EXECUTEDIRECT,
+                Command(operation)
             )
         ).send()
 
         parts = response.segments[0].parts
         function_code = response.segments[0].function_code
         if function_code == function_codes.SELECT:
-            self._handle_prepared_select(parts, prepared_statement.result_metadata_part)
+            self._handle_select(parts)
         elif function_code in function_codes.DML:
-            self._handle_prepared_insert(parts)
+            self._handle_insert(parts)
         elif function_code == function_codes.DDL:
             # No additional handling is required
             pass
@@ -197,35 +225,11 @@ class Cursor(object):
             else:
                 # Continue with Hana style statement execution
                 prepared_statement = self.get_prepared_statement(statement_id)
-                self.execute_prepared(prepared_statement, parameters)
+                # Wrap single-row parameters into a list for a multi_row_parameter set:
+                self.execute_prepared(prepared_statement, [parameters])
 
         # Return cursor object:
         return self
-
-    def _execute_direct(self, operation):
-        """Execute statements which are not going through 'prepare_statement
-        (aka 'direct execution').
-        Because: Either their have no parameters, or Python's string expansion
-                 has been applied to the SQL statement.
-        """
-        response = self._connection.Message(
-            RequestSegment(
-                message_types.EXECUTEDIRECT,
-                Command(operation)
-            )
-        ).send()
-
-        parts = response.segments[0].parts
-        function_code = response.segments[0].function_code
-        if function_code == function_codes.SELECT:
-            self._handle_select(parts)
-        elif function_code in function_codes.DML:
-            self._handle_insert(parts)
-        elif function_code == function_codes.DDL:
-            # No additional handling is required
-            pass
-        else:
-            raise InterfaceError("Invalid or unsupported function code received")
 
     def executemany(self, statement, parameters):
         # TODO: Prepare statement and use binary parameters transmission
@@ -257,7 +261,7 @@ class Cursor(object):
             elif part.kind == part_kinds.RESULTSET:
                 # Cleanup buffer
                 del self._buffer
-                self._buffer = deque()
+                self._buffer = collections.deque()
 
                 for row in self._unpack_rows(part.payload, part.rows):
                     self._buffer.append(row)
@@ -292,7 +296,7 @@ class Cursor(object):
 
         # Cleanup buffer
         del self._buffer
-        self._buffer = deque()
+        self._buffer = collections.deque()
 
         for row in self._unpack_rows(result_set.payload, result_set.rows):
             self._buffer.append(row)

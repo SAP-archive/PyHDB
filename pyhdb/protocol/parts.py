@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import io
 
 import struct
 from collections import namedtuple
@@ -322,34 +323,62 @@ class ReadLobReply(Part):
 
 
 class Parameters(Part):
-    """
-    Prepared statement parameters' data
-    """
+    """Prepared statement parameters' data """
 
     kind = constants.part_kinds.PARAMETERS
 
-    def __init__(self, parameters):
+    def __init__(self, multi_row_parameters):
         """Initialize parameter part
-        :param parameters: A list of named tuples containing parameter meta data and values
-               Example: [Parameter(id=0, datatype=9, length=255, value='row2'), Parameter(id=1, ....), ]
+        :param multi_row_parameters: A nested list (1 per row) of named tuples containing parameter meta data and values
+               Example: [[Parameter(id=0, datatype=9, length=255, value='row2'), Parameter(id=1, ...), ],
+                        [Parameter..], ...]
+        :returns: tuple (arguments_count, payload)
         """
-        self.parameters = parameters
+        self.multi_row_parameters = multi_row_parameters
 
     def pack_data(self):
-        payload = ''
-        for parameter in self.parameters:
-            type_code, value = parameter[1], parameter[3]
-            try:
-                if type_code in types.String.type_code:
-                    pfield = types.by_type_code[type_code].prepare(value, type_code)
-                elif value is None:
-                    pfield = types.NoneType.prepare(type_code)
-                else:
-                    pfield = types.by_type_code[type_code].prepare(value)
-            except KeyError:
-                raise InterfaceError("Prepared statement parameter datatype not supported: %d" % type_code)
-            payload += pfield
-        return 1, payload
+        payload = io.BytesIO()
+        lob_cache = []
+
+        while self.multi_row_parameters:
+            row_parameters = self.multi_row_parameters.popleft()  # pop first item from deque
+
+            for parameter in row_parameters:
+                # 'parameter' is a named tuple, created in PreparedStatement.set_parameters()
+                type_code, value = parameter.type_code, parameter.value
+                header_pos = payload.tell()
+                try:
+                    if type_code in types.String.type_code:
+                        pfield = types.by_type_code[type_code].prepare(value, type_code)
+                    elif value is None:
+                        pfield = types.NoneType.prepare(type_code)
+                    else:
+                        pfield = types.by_type_code[type_code].prepare(value)
+                except KeyError:
+                    raise InterfaceError("Prepared statement parameter datatype not supported: %d" % type_code)
+                payload.write(pfield)
+                if type_code in (types.BlobType.type_code, types.ClobType.type_code, types.NClobType.type_code):
+                    lob_cache.append((value, header_pos))
+
+        # from pyhdb.lib.stringlib import humanhexlify
+        # print humanhexlify(payload.getvalue())
+
+        # Now append actual binary lob data after the end of all parameters:
+
+        # TODO: For now we assume that everything fits within one part frame (less than 2**17 bytes) ! Fix this!!!
+
+        for lob, lob_header_position in lob_cache:
+            # After all rows have been written, append the lobs, and update the corresponding lob headers
+            # with lob position and lob size:
+            lob_pos = payload.tell()
+            lob_data = lob.encode()
+            payload.write(lob_data)
+            payload.seek(lob_header_position)
+            lob_size = len(lob_data)
+            payload.write(types.by_type_code[lob.type_code].prepare(None, length=lob_size, position=lob_pos))
+            payload.seek(0, io.SEEK_END)
+
+        return 1, payload.getvalue()
 
 
 class Authentication(Part):
@@ -459,11 +488,11 @@ class ParameterMetadata(Part):
     def unpack_data(cls, argument_count, payload):
         ParamMetadata = namedtuple('ParameterMetadataTuple', 'options datatype mode id length fraction')
         values = []
-        for _ in iter_range(argument_count):
+        for i in iter_range(argument_count):
             param = struct.unpack("bbbbIhhI", payload.read(16))
             if param[4] == 0xffffffff:
                 # no parameter name given
-                param_id = _
+                param_id = i
             else:
                 # offset of the parameter name set
                 payload.seek(param[4], 0)
