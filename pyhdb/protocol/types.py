@@ -23,7 +23,7 @@ from weakref import WeakValueDictionary
 
 from pyhdb.protocol.constants import type_codes
 from pyhdb.exceptions import InterfaceError
-from pyhdb._compat import PY2, PY3, with_metaclass, iter_range, int_types, \
+from pyhdb.compat import PY26, PY3, with_metaclass, iter_range, int_types, \
     string_types, byte_type, text_type
 from pyhdb.protocol.headers import WriteLobHeader
 
@@ -35,8 +35,6 @@ debug = recv_log.debug
 by_type_code = WeakValueDictionary()
 # Dictionary: keys: Python type classes, values: Type-(sub)classes (from below)
 by_python_type = WeakValueDictionary()
-
-PY26 = PY2 and sys.version_info[1] == 6
 
 
 class TypeMeta(type):

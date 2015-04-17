@@ -21,7 +21,7 @@ from io import BytesIO
 from pyhdb.protocol.base import RequestSegment, Part
 from pyhdb.protocol.constants import message_types
 from pyhdb.protocol.parts import Authentication, Fields
-from pyhdb._compat import iter_range
+from pyhdb.compat import iter_range
 
 CLIENT_PROOF_SIZE = 32
 CLIENT_KEY_SIZE = 64

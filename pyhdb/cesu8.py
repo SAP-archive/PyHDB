@@ -13,7 +13,8 @@
 # limitations under the License.
 
 import codecs
-from pyhdb._compat import PY2, unichr
+from pyhdb.compat import PY2, unichr
+
 
 class IncrementalDecoder(codecs.BufferedIncrementalDecoder):
     # Decoder inspired by python-ftfy written by Rob Speer
@@ -67,6 +68,7 @@ class IncrementalDecoder(codecs.BufferedIncrementalDecoder):
         # Fallback to UTF-8
         return codecs.utf_8_decode(input, errors, final)
 
+
 class IncrementalEncoder(codecs.BufferedIncrementalEncoder):
 
     def _buffer_encode(self, input, errors, final=False):
@@ -104,8 +106,10 @@ class IncrementalEncoder(codecs.BufferedIncrementalEncoder):
             seq[5] = 0x80 | (codepoint & 0x3F)
             return bytes(seq), 1
 
+
 def encode(input, errors='strict'):
     return IncrementalEncoder(errors).encode(input, final=True), len(input)
+
 
 def decode(input, errors='strict'):
     return IncrementalDecoder(errors).decode(input, final=True), len(input)

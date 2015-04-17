@@ -13,14 +13,13 @@
 # limitations under the License.
 
 from collections import deque, namedtuple
-import binascii
 
 from pyhdb.protocol.base import RequestSegment
 from pyhdb.protocol.types import escape_values, by_type_code
 from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, Parameters
 from pyhdb.protocol.constants import message_types, function_codes, part_kinds
 from pyhdb.exceptions import ProgrammingError, InterfaceError, DatabaseError
-from pyhdb._compat import iter_range
+from pyhdb.compat import iter_range
 
 
 FORMAT_OPERATION_ERRORS = [
@@ -82,7 +81,7 @@ class PreparedStatement(object):
 
 
 class Cursor(object):
-
+    """Database cursor class"""
     def __init__(self, connection):
         self._connection = connection
         self._buffer = deque()
@@ -279,7 +278,7 @@ class Cursor(object):
             elif part.kind == part_kinds.STATEMENTCONTEXT:
                 pass
             else:
-                raise InterfaceError ("Prepared insert statement response, unexpected part kind %d." % part.kind)
+                raise InterfaceError("Prepared insert statement response, unexpected part kind %d." % part.kind)
         self._executed = True
 
     def _handle_select(self, parts):
@@ -306,7 +305,7 @@ class Cursor(object):
         self.description = None
 
     def _unpack_rows(self, payload, rows):
-        for i in iter_range(rows):
+        for _ in iter_range(rows):
             yield tuple(typ.from_resultset(payload, self._connection) for typ in self._column_types)
 
     def fetchmany(self, size=None):

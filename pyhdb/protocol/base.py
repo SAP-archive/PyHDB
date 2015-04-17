@@ -19,7 +19,7 @@ from io import BytesIO
 from weakref import WeakValueDictionary
 
 from pyhdb.exceptions import InterfaceError
-from pyhdb._compat import with_metaclass
+from pyhdb.compat import with_metaclass
 from pyhdb.protocol.constants import part_kinds
 
 MAX_MESSAGE_SIZE = 2**17

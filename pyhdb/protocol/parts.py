@@ -19,7 +19,7 @@ from pyhdb.protocol import types
 from pyhdb.protocol import constants
 from pyhdb.protocol.base import Part, PartMeta
 from pyhdb.exceptions import InterfaceError, DatabaseError
-from pyhdb._compat import is_text, iter_range, with_metaclass
+from pyhdb.compat import is_text, iter_range, with_metaclass
 from pyhdb.protocol.headers import ReadLobHeader
 
 
