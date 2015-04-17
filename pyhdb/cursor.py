@@ -45,71 +45,40 @@ def format_operation(operation, parameters=None):
 
 
 class PreparedStatement(object):
+    """Reference object to a prepared statement including parameter (meta) data"""
 
-    def __init__(self, connection, statement_id, parameters, resultmetadata):
+    def __init__(self, connection, statement_id, params_metadata, result_metadata_part):
+        """Initialize PreparedStatement part object
+        :param connection: connection object
+        :param statement_id: 8-byte statement identifier
+        :param params_metadata: A tuple of named-tuple instances containing parameter meta data:
+               Example: (ParameterMetadata(options=2, datatype=26, mode=1, id=0, length=24, fraction=0),)
+        :param result_metadata_part: can be None
+        """
+
         self._connection = connection
-        self._statement_id = statement_id
-        self._parameters = parameters
-        self._resultmetadata = resultmetadata
-        if type(parameters[0][3]) == str:
-            # named parameters
-            self._param_values = {}
-            for param in parameters:
-                self._param_values[param[3]] = None
-        else:
-            # parameters by sequence
-            self._param_values = [None] * (1+len(parameters))  # sequence starts from 1, 2 ...; 0 not used
-
-    @property
-    def statement_id(self):
-        """ statement id as byte array"""
-        return self._statement_id
-
-    @property
-    def statement_xid(self):
-        """ statement id as hex string"""
-        return binascii.hexlify(bytearray(self._statement_id))
-
-    @property
-    def result_metadata(self):
-        return self._resultmetadata
-
-    def set_parameter_value(self, param_id, value):
-        """ set parameter value"""
-        self._param_values[param_id] = value
-
-    @property
-    def parameter_value(self, param_id):
-        """ get parameter value"""
-        return self._param_values[param_id]
+        self.statement_id = statement_id
+        self._params_metadata = params_metadata
+        self.result_metadata_part = result_metadata_part
+        self._param_values = None
 
     @property
     def parameters(self):
-        """ get all parameters' values"""
-        Parameter = namedtuple('Parameter', 'id datatype length value')
-        _result = []
-        for param in self._parameters:
-            if type(param[3]) == int:
-                value_id = param[3]+1
-            else:
-                value_id = param[3]
-            _result.append(Parameter(param[3], param[1], param[4], self._param_values[value_id]))
-        return _result
+        """Get all parameters' values in form of a list with named tuples"""
+        _Parameter = namedtuple('Parameter', 'id datatype length value')
+        r = [_Parameter(p.id, p.datatype, p.length, self._param_values[p.id]) for p in self._params_metadata]
+        return r
 
     def set_parameters(self, param_values):
-        if type(param_values) is list:
-            if (len(param_values) + 1) != len (self._param_values):
-                raise ProgrammingError("Prepared statement parameters expected %d supplied %d." %
-                                       (len(self._param_values) - 1, len(param_values)))
-
-            for param_id, value in enumerate(param_values):
-                self._param_values[param_id + 1] = value
-        # elif type(param_values) is dict:
-        #    for param_id in param_values:
-        #        self._param_values[param_id] = param_values[param_id]
-        else:
-            raise ProgrammingError("Prepared statement parameters supplied as %s, shall be list." %
+        """Store parameters in object. Make some basic checks that at least the number of parameters is correct."""
+        if not isinstance(param_values, (list, tuple)):
+            raise ProgrammingError("Prepared statement parameters supplied as %s, shall be list or tuple." %
                                    str(type(param_values)))
+
+        if len(param_values) != len(self._params_metadata):
+            raise ProgrammingError("Prepared statement parameters expected %d supplied %d." %
+                                   (len(self._params_metadata), len(param_values)))
+        self._param_values = param_values[:]
 
 
 class Cursor(object):
@@ -130,10 +99,11 @@ class Cursor(object):
     def prepared_statement_ids(self):
         return self._prepared_statements.keys()
 
-    def prepared_statement(self, statement_id):
+    def get_prepared_statement(self, statement_id):
         return self._prepared_statements[statement_id]
 
     def prepare(self, statement):
+        """Prepare (and cache) SQL statement"""
         self._check_closed()
 
         response = self._connection.Message(
@@ -143,23 +113,22 @@ class Cursor(object):
             )
         ).send()
 
-        _result = {'result_metadata': None}  # not sent for INSERT
-        for _part in response.segments[0].parts:
-            if _part.kind == part_kinds.STATEMENTID:
-                statement_id = _part.statement_id
-            elif _part.kind == part_kinds.STATEMENTCONTEXT:
-                _result['stmt_context'] = _part
-            elif _part.kind == part_kinds.PARAMETERMETADATA:
-                _result['params_metadata'] = _part.values
-            elif _part.kind == part_kinds.RESULTSETMETADATA:
-                _result['result_metadata'] = _part
+        statement_id = params_metadata = result_metadata_part = None
 
-        # Handle case where parts-list was empty -> statement_id not set then!
+        for part in response.segments[0].parts:
+            if part.kind == part_kinds.STATEMENTID:
+                statement_id = part.statement_id
+            # elif part.kind == part_kinds.STATEMENTCONTEXT:
+            #     stmt_context = part
+            elif part.kind == part_kinds.PARAMETERMETADATA:
+                params_metadata = part.values
+            elif part.kind == part_kinds.RESULTSETMETADATA:
+                result_metadata_part = part
 
-        self._prepared_statements[statement_id] = PreparedStatement(
-            self._connection, statement_id, _result['params_metadata'],
-            _result['result_metadata'])
-
+        assert statement_id is not None          # Check that both variables have been set in loop!
+        assert params_metadata is not None
+        self._prepared_statements[statement_id] = PreparedStatement(self._connection, statement_id,
+                                                                    params_metadata, result_metadata_part)
         return statement_id
 
     def execute_prepared(self, prepared_statement, parameters=None):
@@ -180,7 +149,7 @@ class Cursor(object):
         parts = response.segments[0].parts
         function_code = response.segments[0].function_code
         if function_code == function_codes.SELECT:
-            self._handle_prepared_select(parts, prepared_statement.result_metadata)
+            self._handle_prepared_select(parts, prepared_statement.result_metadata_part)
         elif function_code in function_codes.DML:
             self._handle_prepared_insert(parts)
         elif function_code == function_codes.DDL:
@@ -228,7 +197,7 @@ class Cursor(object):
                 self._execute_direct(operation)
             else:
                 # Continue with Hana style statement execution
-                prepared_statement = self.prepared_statement(statement_id)
+                prepared_statement = self.get_prepared_statement(statement_id)
                 self.execute_prepared(prepared_statement, parameters)
 
         # Return cursor object:

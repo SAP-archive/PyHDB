@@ -303,22 +303,22 @@ class ReadLobReply(Part):
     @classmethod
     def unpack_data(cls, argument_count, payload):
         locator_id, options = cls.part_struct_p1.unpack(payload.read(cls.part_struct_p1.size))
-        isNull = options & ReadLobHeader.LOB_OPTION_ISNULL
-        if isNull:
+        is_null = options & ReadLobHeader.LOB_OPTION_ISNULL
+        if is_null:
             # returned LOB is NULL
-            lobdata = isDataIncluded = isLastData = None
-            isNull = True
+            lobdata = is_data_included = is_last_data = None
+            is_null = True
         else:
             chunklength, filler = cls.part_struct_p2.unpack(payload.read(cls.part_struct_p2.size))
-            isDataIncluded = options & ReadLobHeader.LOB_OPTION_DATAINCLUDED
-            if isDataIncluded:
+            is_data_included = options & ReadLobHeader.LOB_OPTION_DATAINCLUDED
+            if is_data_included:
                 lobdata = payload.read()
             else:
                 lobdata = ''
-            isLastData = options & ReadLobHeader.LOB_OPTION_LASTDATA
+            is_last_data = options & ReadLobHeader.LOB_OPTION_LASTDATA
             assert len(lobdata) == chunklength
-        # print 'realobreply unpack data called with args', len(lobdata), isDataIncluded, isLastData
-        return lobdata, isDataIncluded, isLastData, isNull
+        # print 'realobreply unpack data called with args', len(lobdata), is_data_included, is_last_data
+        return lobdata, is_data_included, is_last_data, is_null
 
 
 class Parameters(Part):
@@ -329,6 +329,10 @@ class Parameters(Part):
     kind = constants.part_kinds.PARAMETERS
 
     def __init__(self, parameters):
+        """Initialize parameter part
+        :param parameters: A list of named tuples containing parameter meta data and values
+               Example: [Parameter(id=0, datatype=9, length=255, value='row2'), Parameter(id=1, ....), ]
+        """
         self.parameters = parameters
 
     def pack_data(self):
@@ -453,7 +457,7 @@ class ParameterMetadata(Part):
 
     @classmethod
     def unpack_data(cls, argument_count, payload):
-        ParamMetadata = namedtuple('ParameterMetadata', 'options datatype mode id length fraction')
+        ParamMetadata = namedtuple('ParameterMetadataTuple', 'options datatype mode id length fraction')
         values = []
         for _ in iter_range(argument_count):
             param = struct.unpack("bbbbIhhI", payload.read(16))
