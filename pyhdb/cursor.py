@@ -46,6 +46,8 @@ def format_operation(operation, parameters=None):
 class PreparedStatement(object):
     """Reference object to a prepared statement including parameter (meta) data"""
 
+    ParamTuple = collections.namedtuple('Parameter', 'id type_code length value')
+
     def __init__(self, connection, statement_id, params_metadata, result_metadata_part):
         """Initialize PreparedStatement part object
         :param connection: connection object
@@ -59,14 +61,37 @@ class PreparedStatement(object):
         self.statement_id = statement_id
         self._params_metadata = params_metadata
         self.result_metadata_part = result_metadata_part
-        self.parameters = collections.deque()
+        self._pushed_row_params = []
+        self._multi_row_parameters = None
+        self.end_of_data = False
 
-    def set_parameters(self, multi_row_parameters):
-        """Store parameters in object. Make some basic checks that at least the number of parameters is correct."""
-        _Parameter = collections.namedtuple('Parameter', 'id type_code length value')
-        self.parameters = collections.deque()  # make sure list is empty
+    def prepare_parameters(self, multi_row_parameters):
+        """ Attribute sql parameters with meta data for a prepared statement.
+        Make some basic checks that at least the number of parameters is correct.
+        :param multi_row_parameters: A list/tuple containing list/tuples of parameters (for multiple rows)
+        :returns: A generator producing parameters attributed with meta data for one sql statement (a row) at a time
+        """
+        self.end_of_data = False
+        self._multi_row_parameters = iter(multi_row_parameters)
+        return self
 
-        for parameters in multi_row_parameters:
+    def __iter__(self):
+        return self
+
+    def __nonzero__(self):
+        return not self.end_of_data
+
+    def next(self):
+        if self.end_of_data:
+            raise StopIteration()
+        if self._pushed_row_params:
+            row_params = self._pushed_row_params.pop()
+        else:
+            try:
+                parameters = self._multi_row_parameters.next()
+            except StopIteration:
+                self.end_of_data = True
+                raise
             if not isinstance(parameters, (list, tuple)):
                 raise ProgrammingError("Prepared statement parameters supplied as %s, shall be list or tuple." %
                                        str(type(parameters)))
@@ -74,8 +99,11 @@ class PreparedStatement(object):
             if len(parameters) != len(self._params_metadata):
                 raise ProgrammingError("Prepared statement parameters expected %d supplied %d." %
                                        (len(self._params_metadata), len(parameters)))
-            row_params = [_Parameter(p.id, p.datatype, p.length, parameters[p.id]) for p in self._params_metadata]
-            self.parameters.append(row_params)
+            row_params = [self.ParamTuple(p.id, p.datatype, p.length, parameters[p.id]) for p in self._params_metadata]
+        return row_params
+
+    def push_back(self, row_params):
+        self._pushed_row_params.append(row_params)
 
 
 class Cursor(object):
@@ -100,7 +128,10 @@ class Cursor(object):
         return self._prepared_statements[statement_id]
 
     def prepare(self, statement):
-        """Prepare (and cache) SQL statement"""
+        """Prepare SQL statement in HANA and cache it
+        :param statement; a valid SQL statement
+        :returns: statement_id (of prepared and cached statement)
+        """
         self._check_closed()
 
         response = self._connection.Message(
@@ -115,15 +146,15 @@ class Cursor(object):
         for part in response.segments[0].parts:
             if part.kind == part_kinds.STATEMENTID:
                 statement_id = part.statement_id
-            # elif part.kind == part_kinds.STATEMENTCONTEXT:
-            #     stmt_context = part
             elif part.kind == part_kinds.PARAMETERMETADATA:
                 params_metadata = part.values
             elif part.kind == part_kinds.RESULTSETMETADATA:
                 result_metadata_part = part
 
-        assert statement_id is not None          # Check that both variables have been set in loop!
+        # Check that both variables have been set in previous loop, we need them:
+        assert statement_id is not None
         assert params_metadata is not None
+        # cache statement:
         self._prepared_statements[statement_id] = PreparedStatement(self._connection, statement_id,
                                                                     params_metadata, result_metadata_part)
         return statement_id
@@ -135,16 +166,15 @@ class Cursor(object):
         """
         self._check_closed()
 
-        # Convert parameters into a deque of lists with parameters as named tuples (incl. some meta data):
-        prepared_statement.set_parameters(multi_row_parameters)
+        # Convert parameters into a generator producing lists with parameters as named tuples (incl. some meta data):
+        parameters = prepared_statement.prepare_parameters(multi_row_parameters)
 
-        while prepared_statement.parameters:
-            # Request resultset
+        while parameters:
             response = self._connection.Message(
                 RequestSegment(
                     message_types.EXECUTE,
                     (StatementId(prepared_statement.statement_id),
-                     Parameters(prepared_statement.parameters))
+                     Parameters(parameters))
                 )
             ).send()
 
@@ -161,10 +191,9 @@ class Cursor(object):
                 raise InterfaceError("Invalid or unsupported function code received")
 
     def _execute_direct(self, operation):
-        """Execute statements which are not going through 'prepare_statement
-        (aka 'direct execution').
-        Because: Either their have no parameters, or Python's string expansion
-                 has been applied to the SQL statement.
+        """Execute statements which are not going through 'prepare_statement' (aka 'direct execution').
+        Either their have no parameters, or Python's string expansion has been applied to the SQL statement.
+        :param operation:
         """
         response = self._connection.Message(
             RequestSegment(
@@ -187,6 +216,9 @@ class Cursor(object):
 
     def execute(self, statement, parameters=None):
         """Execute statement on database
+        :param statement: a valid SQL statement
+        :param parameters: a list/tuple of parameters
+        :returns: this cursor
 
         In order to be compatible with Python's DBAPI five parameter styles
         must be supported.
@@ -209,32 +241,33 @@ class Cursor(object):
             # Directly execute the statement, nothing else to prepare:
             self._execute_direct(statement)
         else:
-            # Parameters are given.
-            # First try safer hana-style parameter expansion:
-            try:
-                statement_id = self.prepare(statement)
-            except DatabaseError, msg:
-                # Hana expansion failed, check message to be sure of reason:
-                if 'incorrect syntax near "%"' not in str(msg):
-                    # Probably some other error than related to string expansion
-                    raise
-                # Statement contained percentage char, so try Python style
-                # parameter expansion:
-                operation = format_operation(statement, parameters)
-                self._execute_direct(operation)
-            else:
-                # Continue with Hana style statement execution
-                prepared_statement = self.get_prepared_statement(statement_id)
-                # Wrap single-row parameters into a list for a multi_row_parameter set:
-                self.execute_prepared(prepared_statement, [parameters])
-
-        # Return cursor object:
+            self.executemany(statement, parameters=[parameters])
         return self
 
     def executemany(self, statement, parameters):
-        # TODO: Prepare statement and use binary parameters transmission
-        for _parameters in parameters:
-            self.execute(statement, _parameters)
+        """Execute statement on database with multiple rows to be inserted/updated
+        :param statement: a valid SQL statement
+        :param parameters: a nested list/tuple of parameters for multiple rows
+        :returns: this cursor
+        """
+        # First try safer hana-style parameter expansion:
+        try:
+            statement_id = self.prepare(statement)
+        except DatabaseError, msg:
+            # Hana expansion failed, check message to be sure of reason:
+            if 'incorrect syntax near "%"' not in str(msg):
+                # Probably some other error than related to string expansion -> raise an error
+                raise
+            # Statement contained percentage char, so perform Python style parameter expansion:
+            for row_params in parameters:
+                operation = format_operation(statement, row_params)
+                self._execute_direct(operation)
+        else:
+            # Continue with Hana style statement execution:
+            prepared_statement = self.get_prepared_statement(statement_id)
+            self.execute_prepared(prepared_statement, parameters)
+        # Return cursor object:
+        return self
 
     def _handle_result_metadata(self, result_metadata):
         description = []

@@ -11,15 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import io
 
+# Enable absolute import, otherwise the 'string' module of stdlib will not be found (conflicts with pyhdb string.py)
+from __future__ import absolute_import
+
+import io
 import struct
+from types import StringTypes
 from collections import namedtuple
+###
 import pyhdb.protocol.constants.part_kinds
 from pyhdb.protocol import types
 from pyhdb.protocol import constants
-from pyhdb.protocol.base import Part, PartMeta
-from pyhdb.exceptions import InterfaceError, DatabaseError
+from pyhdb.protocol.base import Part, PartMeta, MAX_MESSAGE_SIZE
+from pyhdb.exceptions import InterfaceError, DatabaseError, DataError
 from pyhdb.compat import is_text, iter_range, with_metaclass
 from pyhdb.protocol.headers import ReadLobHeader
 
@@ -327,58 +332,97 @@ class Parameters(Part):
 
     kind = constants.part_kinds.PARAMETERS
 
-    def __init__(self, multi_row_parameters):
+    def __init__(self, parameters):
         """Initialize parameter part
-        :param multi_row_parameters: A nested list (1 per row) of named tuples containing parameter meta data and values
-               Example: [[Parameter(id=0, datatype=9, length=255, value='row2'), Parameter(id=1, ...), ],
-                        [Parameter..], ...]
+        :param parameters: A generator producing lists (1 per row) of named tuples containing parameter meta
+                          data and values
+               Example: [Parameter(id=0, datatype=9, length=255, value='row2'), Parameter(id=1, ...), ]
         :returns: tuple (arguments_count, payload)
         """
-        self.multi_row_parameters = multi_row_parameters
+        self.parameters = parameters
 
     def pack_data(self):
         payload = io.BytesIO()
-        lob_cache = []
+        num_rows = 0
 
-        while self.multi_row_parameters:
-            row_parameters = self.multi_row_parameters.popleft()  # pop first item from deque
+        for row_parameters in self.parameters:
+            # memorize start position of row in buffer if it has to be removed in case that
+            # the maximum message size will be exceeded
+            row_header_start_pos = payload.tell()
+            row_lobs = []
+            row_lob_size_sum = 0
 
             for parameter in row_parameters:
-                # 'parameter' is a named tuple, created in PreparedStatement.set_parameters()
+                # 'parameter' is a named tuple, created in PreparedStatement.prepare_parameters()
                 type_code, value = parameter.type_code, parameter.value
-                header_pos = payload.tell()
                 try:
-                    if type_code in types.String.type_code:
-                        pfield = types.by_type_code[type_code].prepare(value, type_code)
-                    elif value is None:
-                        pfield = types.NoneType.prepare(type_code)
-                    else:
-                        pfield = types.by_type_code[type_code].prepare(value)
+                    _DataType = types.by_type_code[type_code]
                 except KeyError:
                     raise InterfaceError("Prepared statement parameter datatype not supported: %d" % type_code)
-                payload.write(pfield)
+
+                if value is None:
+                    pfield = types.NoneType.prepare(type_code)
+                elif type_code in types.String.type_code:
+                    pfield = _DataType.prepare(value, type_code)
+                else:
+                    pfield = _DataType.prepare(value)
+
                 if type_code in (types.BlobType.type_code, types.ClobType.type_code, types.NClobType.type_code):
-                    lob_cache.append((value, header_pos))
+                    lob_header_pos = payload.tell()
+                    # Lob data can be either an instance of a Lob-class, or a string/unicode object, Encode properly:
+                    if isinstance(value, StringTypes):
+                        lob_data = _DataType.encode_value(value)
+                    else:
+                        # assume a LOB instance:
+                        lob_data = value.encode()
+                    row_lobs.append((lob_data, _DataType, lob_header_pos))
+                    row_lob_size_sum += len(lob_data)
 
-        # from pyhdb.lib.stringlib import humanhexlify
-        # print humanhexlify(payload.getvalue())
+                payload.write(pfield)
 
-        # Now append actual binary lob data after the end of all parameters:
+            if payload.tell() + row_lob_size_sum > MAX_MESSAGE_SIZE:
+                # Last row does not fit anymore into the current message! Remove it from payload
+                # by resetting payload pointer to former position and truncate away last row data:
+                payload.seek(row_header_start_pos)
+                payload.truncate()
+                self.parameters.push_back(row_parameters)  # push back unused row data into generator!
 
-        # TODO: For now we assume that everything fits within one part frame (less than 2**17 bytes) ! Fix this!!!
+                # Check for case that a row does not fit at all into a part block (i.e. it is the first one):
+                if num_rows == 0:
+                    raise DataError('Parameter row too large to fit into execute statement.'
+                                    'Got: %d bytes, allowed: %d bytes' %
+                                    (payload.tell() + row_lob_size_sum, MAX_MESSAGE_SIZE))
+                break  # jump out of loop - no more rows to be added!
+            else:
+                # Keep row data. Also append actual binary lob data after the end of all parameters:
+                self.pack_lob_data(payload, row_header_start_pos, row_lobs)
 
-        for lob, lob_header_position in lob_cache:
-            # After all rows have been written, append the lobs, and update the corresponding lob headers
-            # with lob position and lob size:
-            lob_pos = payload.tell()
-            lob_data = lob.encode()
-            payload.write(lob_data)
-            payload.seek(lob_header_position)
+            num_rows += 1
+            # payload.seek(row_header_start_pos)
+            # from pyhdb.lib.stringlib import humanhexlify
+            # print 'row', num_rows, humanhexlify(payload.read())
+        return num_rows, payload.getvalue()
+
+    @staticmethod
+    def pack_lob_data(payload, row_header_start_pos, row_lobs):
+        """
+        After parameter row has been written, append the lobs and update the corresponding lob headers
+        with lob position and lob size:
+        :param payload: payload object (io.BytesIO instance)
+        :param row_header_start_pos: absolute position of start position of row within payload
+        :param row_lobs: list of tuples of already binary encoded lob data, their header position and DataType
+        """
+        for lob_data, _DataType, lob_header_position in row_lobs:
+            # _DataType is an instance of types.NClobType/ClobType,BlobType
             lob_size = len(lob_data)
-            payload.write(types.by_type_code[lob.type_code].prepare(None, length=lob_size, position=lob_pos))
+            # Calculate position of lob within the binary packed parameter row: (add +1, Hana counts from 1, not 0)
+            lob_pos = payload.tell() - row_header_start_pos + 1
+            payload.write(lob_data)
+            # Write position and size of lob data into lob header block:
+            payload.seek(lob_header_position)
+            payload.write(_DataType.prepare(None, length=lob_size, position=lob_pos))
+            # Set pointer back to end for further writing
             payload.seek(0, io.SEEK_END)
-
-        return 1, payload.getvalue()
 
 
 class Authentication(Part):

@@ -36,8 +36,8 @@ def from_payload(type_code, payload, connection):
     else:
         data = payload.read(lob_header.chunk_length)
         # print 'raw lob data: %r' % data
-        LobClass = LOB_TYPE_CODE_MAP[type_code]
-        lob = LobClass(data, lob_header, connection)
+        _LobClass = LOB_TYPE_CODE_MAP[type_code]
+        lob = _LobClass.from_payload(data, lob_header, connection)
         recv_log.debug('Lob Header %s' % str(lob))
     return lob
 
@@ -47,17 +47,22 @@ class Lob(object):
 
     EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK = 1024
     type_code = None
+    _IO_Class = None
+
+    @classmethod
+    def from_payload(cls, lob_header, payload_data, connection):
+        raise NotImplemented()
 
     def __init__(self, init_value='', lob_header=None, connection=None):
-        self.connection = connection
+        self.data = self._init_io_container(init_value)
         self.lob_header = lob_header
-        self.data = self._decode_data(init_value)
+        self.connection = connection
         self.data.seek(0)
         self._lob_length = len(self.data.getvalue())
         # assert self._lob_length == self.lob_header.chunk_length  # just to be sure ;-)
 
-    def _decode_data(self, init_value):
-        raise NotImplementedError()
+    def _init_io_container(self, init_value):
+        raise NotImplemented()
 
     def tell(self):
         """Return position of pointer in lob buffer"""
@@ -136,8 +141,12 @@ class Lob(object):
         """Return all currently available lob data (might be shorter than the one in the database)"""
         return self.data.getvalue()
 
+    def __repr__(self):
+        return '<%s %s>' % (self.__class__.__name__, str(self.lob_header))
+
     def __str__(self):
-        return '%s: %s' % (self.__class__.__name__, str(self.lob_header))
+        """Convert lob into its string/unicode format"""
+        return self.encode()
 
     def encode(self):
         """Encode lob data into binary format"""
@@ -148,38 +157,48 @@ class Blob(Lob):
     """Instance of this class will be returned for a BLOB object in a db result"""
     type_code = type_codes.BLOB
 
-    def _decode_data(self, init_value):
-        """Decode binary lob data. In this case (BLOB) no conversion is necessary"""
+    @classmethod
+    def from_payload(cls, payload_data, lob_header, connection):
+        return cls(payload_data, lob_header, connection)
+
+    def _init_io_container(self, init_value):
+        if isinstance(init_value, io.BytesIO):
+            return init_value
         return io.BytesIO(init_value)
 
     def encode(self):
         return self.getvalue()
 
 
-class Clob(Lob):
+class _CharLob(Lob):
+    encoding = None
+
+    @classmethod
+    def from_payload(cls, payload_data, lob_header, connection):
+        unicode_value = payload_data.decode(cls.encoding)
+        return cls(unicode_value, lob_header, connection)
+
+    def _init_io_container(self, init_value):
+        if isinstance(init_value, io.StringIO):
+            return init_value
+        if isinstance(init_value, str):
+            init_value = init_value.decode(self.encoding)
+        return io.StringIO(init_value)
+
+    def encode(self):
+        return self.getvalue().encode(self.encoding)
+
+
+class Clob(_CharLob):
     """Instance of this class will be returned for a CLOB object in a db result"""
     type_code = type_codes.CLOB
-
-    def _decode_data(self, init_value):
-        """Decode binary lob data. In this case (BLOB) no conversion is necessary"""
-        unicode_value = init_value.decode('ascii')
-        return io.StringIO(unicode_value)
-
-    def encode(self):
-        return self.getvalue().encode('ascii')
+    encoding = 'ascii'
 
 
-class NClob(Lob):
+class NClob(_CharLob):
     """Instance of this class will be returned for a NCLOB object in a db result"""
     type_code = type_codes.NCLOB
-
-    def _decode_data(self, init_value):
-        """Decode binary lob data. Decode utf8 into unicode in this case"""
-        unicode_value = init_value.decode('utf8')
-        return io.StringIO(unicode_value)
-
-    def encode(self):
-        return self.getvalue().encode('utf8')
+    encoding = 'utf8'
 
 
 LOB_TYPE_CODE_MAP = {
