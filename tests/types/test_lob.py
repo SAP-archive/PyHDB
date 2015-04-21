@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright 2014 SAP SE.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,11 +16,134 @@
 
 import io
 import mock
+import pytest
+import string
 from pyhdb.protocol import lobs
+from pyhdb.protocol import parts
 from pyhdb.protocol.types import type_codes
+from pyhdb.exceptions import DataError
 
 
-# Fixture binary data for reading 2000 bytes blob:
+# #############################################################################################################
+#                         Basic LOB creation from ascii and unicode strings
+# #############################################################################################################
+
+# ### Testing BLOBs
+
+def test_blob_uses_bytes_io():
+    data = b'abc \x01 \x45 vv'
+    blob = lobs.Blob(data)
+    assert isinstance(blob.data, io.BytesIO)
+
+
+def test_blob_from_bytestring():
+    data = b'abc \x01 \x45 vv'
+    blob = lobs.Blob(data)
+    assert blob.getvalue() == data
+    assert str(blob) == data
+
+
+def test_blob_from_string():
+    data = 'abc \x01 \x45 vv'
+    blob = lobs.Blob(data)
+    assert blob.getvalue() == data
+
+
+def test_blob_from_bytes_io():
+    data = b'abc \x01 \x45 vv'
+    bytes_io = io.BytesIO(data)
+    blob = lobs.Blob(bytes_io)
+    assert blob.getvalue() == data
+    # check that io container is used directly without copying:
+    assert blob.data is bytes_io
+
+
+# ### Testing CLOBs
+
+def test_clob_uses_string_io():
+    data = string.ascii_letters
+    clob = lobs.Clob(data)
+    assert isinstance(clob.data, io.StringIO)
+
+
+def test_clob_from_ascii_string():
+    data = string.ascii_letters
+    clob = lobs.Clob(data)
+    assert clob.getvalue() == data
+    assert clob.encode() == data
+    assert str(clob) == data
+
+
+def test_clob_from_ascii_unicode():
+    data = string.ascii_letters.decode('ascii')
+    clob = lobs.Clob(data)
+    assert clob.getvalue() == data
+    assert clob.encode() == data
+
+
+def test_clob_from_string_io():
+    data = string.ascii_letters.decode('ascii')
+    text_io = io.StringIO(data)
+    clob = lobs.Clob(text_io)
+    assert clob.getvalue() == data
+    assert clob.data is text_io
+
+
+def test_clob_from_nonascii_string_raises():
+    data = u'朱の子ましけ'
+    utf8_data = data.encode('utf8')
+    with pytest.raises(UnicodeDecodeError):
+        lobs.Clob(utf8_data)
+
+
+# ### Testing NCLOBs
+
+def test_nclob_uses_string_io():
+    data = string.ascii_letters
+    nclob = lobs.NClob(data)
+    assert isinstance(nclob.data, io.StringIO)
+
+
+def test_nclob_from_ascii_string():
+    data = string.ascii_letters
+    nclob = lobs.NClob(data)
+    assert nclob.getvalue() == data
+    assert nclob.encode() == data
+    assert str(nclob) == data
+
+
+def test_nclob_from_utf8_string():
+    data = u'朱の子ましけ'
+    utf8_data = data.encode('utf8')
+    nclob = lobs.NClob(utf8_data)
+    assert nclob.getvalue() == data
+    assert nclob.encode() == utf8_data
+
+
+def test_nclob_from_unicode():
+    data = u'朱の子ましけ'
+    nclob = lobs.NClob(data)
+    assert nclob.getvalue() == data
+    assert nclob.encode() == data.encode('utf8')
+
+
+def test_nclob_from_string_io():
+    data = u'朱の子ましけ'
+    text_io = io.StringIO(data)
+    nclob = lobs.NClob(text_io)
+    assert nclob.getvalue() == data
+    assert nclob.data is text_io
+
+
+# #############################################################################################################
+#                         Creating LOBs from binary data (e.g. database payload)
+# #############################################################################################################
+
+
+# maximum length of lob data from result set:
+MAX_LOB_DATA_LENGTH = 1024
+
+# Fixture: binary data for reading 2000 bytes blob:
 BLOB_HEADER = b'\x01\x02\x00\x00\xd0\x07\x00\x00\x00\x00\x00\x00\xd0\x07\x00\x00' \
               b'\x00\x00\x00\x00\x00\x00\x00\x00\xb2\xb9\x04\x00\x00\x04\x00\x00'
 BLOB_DATA = 'qXHUi0ChHWEWUgSBYhq3LvrgtOOjgGMubxPs3nbfUsRrFKVs0uTgQB4eJtQnPFjG1ZD2rB6qXt0QKvOpyRurpAWYWAH6Q3O2iaGA' \
@@ -42,41 +167,61 @@ BLOB_DATA = 'qXHUi0ChHWEWUgSBYhq3LvrgtOOjgGMubxPs3nbfUsRrFKVs0uTgQB4eJtQnPFjG1ZD
             'IYPguIyGDs8xz4QvMjV4SPGWxkRrCrZgbCbO2t2PM6czC49c5FLbw3QX3UzinDaOumhJtzMpmAPUVjzX0cPiDalsmkxIb1Razz4e' \
             '1cdPATFx3vFelO8KOMurkMxFZKB0tWDjUWOGuQ4hiBu29TXAbR7Q9sxj8erB8omv5R4JyHivVz4DdQ6rWrVccsepgCI1Oydmfy6G'
 
-# Fixture binary data for reading null blob:
-NULL_BLOB_HEADER = b'\x01\x01'
+# Fixture: binary data for reading 52 character CLOB (ascii character LOB):
+CLOB_HEADER = b'\x00\x06\x00\x00\x34\x00\x00\x00\x00\x00\x00\x00\x34\x00\x00\x00' \
+              b'\x00\x00\x00\x00\x00\x00\x00\x00\xae\xc9\x04\x00\x34\x00\x00\x00'
+CLOB_DATA = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+# Fixture; binary data for reading 52 character NCLOB (unicode character LOB):
+NCLOB_HEADER = b'\x00\x06\x00\x00\x34\x00\x00\x00\x00\x00\x00\x00\x9c\x00\x00\x00' \
+               b'\x00\x00\x00\x00\x00\x00\x00\x00\xd1\xc9\x04\x00\x9c\x00\x00\x00'
+NCLOB_DATA = u'朱の子ましける日におえつかうまつらずはしにさはる事侍りてして延光雀院朝臣につかは野の若菜も日は小松引もさ'
+BIN_NCLOB_DATA = NCLOB_DATA.encode('utf8')
+
+lob_params = pytest.mark.parametrize("type_code, lob_header, bin_lob_data, lob_data", [
+    (type_codes.BLOB, BLOB_HEADER, BLOB_DATA, BLOB_DATA),
+    (type_codes.CLOB, CLOB_HEADER, CLOB_DATA, CLOB_DATA),
+    (type_codes.NCLOB, NCLOB_HEADER, BIN_NCLOB_DATA, NCLOB_DATA),
+])
 
 
-def test_parse_blob():
-    """Parse a BLOB with 2000 random items (bytes/chars)"""
-    payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
+# ### Test of reading of LOB data/parsing header ##################################################
+
+@lob_params
+def test_read_lob(type_code, lob_header, bin_lob_data, lob_data):
+    """Read/parse a LOB with given payload (data)"""
+    payload = io.BytesIO(lob_header + bin_lob_data)
     lob = lobs.from_payload(type_codes.BLOB, payload, None)
     assert isinstance(lob, lobs.Blob)  # check for correct instance
-    assert lob.lob_header.lob_type == lob.lob_header.BLOB_TYPE
+    assert lob.lob_header.lob_type in (0, lob.lob_header.LOB_TYPES[type_code])
     assert lob.lob_header.options & lob.lob_header.LOB_OPTION_DATAINCLUDED
-    assert lob.lob_header.char_length == len(BLOB_DATA)
-    assert lob.lob_header.byte_length == len(BLOB_DATA)
-    assert lob.lob_header.locator_id == BLOB_HEADER[20:28]
-    assert lob.lob_header.chunk_length == 1024  # default length of lob data read initially
-    assert lob.lob_header.total_lob_length == len(BLOB_DATA)
-    assert lob.data.getvalue() == BLOB_DATA[:1024]
+    assert lob.lob_header.char_length == len(lob_data)
+    assert lob.lob_header.byte_length == len(bin_lob_data)
+    assert lob.lob_header.locator_id == lob_header[20:28]
+    assert lob.lob_header.chunk_length == min(len(bin_lob_data), MAX_LOB_DATA_LENGTH)
+    assert lob.lob_header.total_lob_length == len(lob_data)
+    assert lob.data.getvalue() == bin_lob_data[:1024]
 
 
-def test_blob_io_functions():
+@lob_params
+def test_blob_io_functions(type_code, lob_header, bin_lob_data, lob_data):
     """Test that io functionality (read/seek/getvalue()/...) works fine
-    Stay below the 1024 item range when reading to avoid loading of additional lob data from DB.
-    This feature is tested in a separate unittest below.
+    Stay below the 1024 item range when reading to avoid lazy loading of additional lob data from DB.
+    This feature is tested in a separate unittest.
     """
-    payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
-    lob = lobs.from_payload(type_codes.BLOB, payload, None)
+    payload = io.BytesIO(lob_header + bin_lob_data)
+    lob = lobs.from_payload(type_code, payload, None)
     assert lob.tell() == 0   # should be at start of lob initially
-    assert lob.read(10) == BLOB_DATA[:10]
+    assert lob.read(10) == lob_data[:10]
     assert lob.tell() == 10
     lob.seek(20)
     assert lob.tell() == 20
-    assert lob.read(10) == BLOB_DATA[20:30]
-    assert lob.read(10) == BLOB_DATA[30:40]
+    assert lob.read(10) == lob_data[20:30]
+    assert lob.read(10) == lob_data[30:40]
     assert lob.tell() == 40
 
+
+# ### Test of lazy loading of LOB data ############################################################
 
 @mock.patch('pyhdb.protocol.lobs.Lob._read_missing_lob_data_from_db')
 def test_blob_read_triggers_further_loading(_read_missing_lob_data_from_db):
@@ -102,20 +247,179 @@ def test_blob_seek_triggers_further_loading(_read_missing_lob_data_from_db):
     _read_missing_lob_data_from_db.assert_called_once_with(1024, 100 + lobs.Lob.EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK)
 
 
-def test_parse_null_blob():
-    """Parse a BLOB which is NULL"""
-    payload = io.BytesIO(NULL_BLOB_HEADER)
-    lob = lobs.from_payload(type_codes.BLOB, payload, None)
-    assert isinstance(lob, lobs.Blob)  # check for correct instance
-    assert lob.lob_header.lob_type == lob.lob_header.BLOB_TYPE
-    assert lob.lob_header.options & lob.lob_header.LOB_OPTION_ISNULL
+# ### Test NULL LOBs ##############################################################################
+
+@pytest.mark.parametrize("type_code, null_lob_header", [
+    (type_codes.BLOB, b'\x01\x01'),
+    (type_codes.CLOB, b'\x02\x01'),
+    (type_codes.NCLOB, b'\x03\x01'),
+    (type_codes.NCLOB, b'\x00\x01'),  # test for additional case where LOB_TYPE has buggy value or zero
+])
+def test_parse_null_blob(type_code, null_lob_header):
+    """Parse a BLOB which is NULL -> a None object is expected"""
+    payload = io.BytesIO(null_lob_header)
+    lob = lobs.from_payload(type_code, payload, None)
+    assert lob is None
 
 
-def test_null_blob_io_functions():
-    """Test that io functionality (read/getvalue()/...) of NULL blob also behave"""
-    payload = io.BytesIO(NULL_BLOB_HEADER)
-    lob = lobs.from_payload(type_codes.BLOB, payload, None)
-    assert lob.tell() is None
-    assert lob.read(10) is None
-    lob.seek(20)  # is accepted, but ignored
-    assert lob.tell() is None
+# #############################################################################################################
+#                         Real HANA interaction with LOBs (integration tests)
+# #############################################################################################################
+
+# LOB_TABLE_NAME = 'PYHDB_LOB_TEST'
+
+TABLE = "PYHDB_TEST_1"
+
+
+def exists_table(connection, name):
+    cursor = connection.cursor()
+    cursor.execute('SELECT 1 FROM "SYS"."TABLES" WHERE "TABLE_NAME" = %s', (name,))
+    return cursor.fetchone() is not None
+
+
+@pytest.fixture
+def test_lob_table(request, connection):
+    """Fixture to create table for testing lobs, and dropping it after test run"""
+    cursor = connection.cursor()
+    if exists_table(connection, "PYHDB_TEST_1"):
+        cursor.execute('DROP TABLE "PYHDB_TEST_1"')
+
+    assert not exists_table(connection, "PYHDB_TEST_1")
+    cursor.execute('CREATE TABLE "PYHDB_TEST_1" (name varchar(9), fblob blob, fclob clob, fnclob nclob)')
+    if not exists_table(connection, "PYHDB_TEST_1"):
+        pytest.skip("Couldn't create table PYHDB_TEST_1")
+        return
+
+    def _close():
+        cursor.execute('DROP TABLE "PYHDB_TEST_1"')
+    request.addfinalizer(_close)
+
+
+@pytest.fixture
+def content_lob_table(request, connection):
+    """Additional fixture to test_lob_table, inserts some rows for testing"""
+    cursor = connection.cursor()
+    if not exists_table(connection, "PYHDB_TEST_1"):
+        raise RuntimeError('Could not find table PYHDB_TEST_1')
+    cursor.execute("insert into PYHDB_TEST_1 (name) values('nulls')")  # all lobs are NULL
+    cursor.execute("insert into PYHDB_TEST_1 values('lob0', 'blob0', 'clob0', 'nclob0')")
+
+
+# #############################################################################################################
+# select statements
+
+@pytest.mark.hanatest
+def test_select_single_blob_row(connection, test_lob_table, content_lob_table):
+    cursor = connection.cursor()
+    row = cursor.execute("select name, fblob, fclob, fnclob from %s where name='lob0'" % TABLE).fetchone()
+    name, blob, clob, nclob = row
+    assert name == 'lob0'
+    assert isinstance(blob, lobs.Blob)
+    assert isinstance(clob, lobs.Clob)
+    assert isinstance(nclob, lobs.NClob)
+    assert blob.read() == 'blob0'
+    assert clob.read() == 'clob0'
+    assert nclob.read() == 'nclob0'
+
+
+@pytest.mark.hanatest
+def test_select_single_null_blob_row(connection, test_lob_table, content_lob_table):
+    cursor = connection.cursor()
+    row = cursor.execute("select name, fblob, fclob, fnclob from %s where name='nulls'" % TABLE).fetchone()
+    name, blob, clob, nclob = row
+    assert name == 'nulls'
+    assert blob is None
+    assert clob is None
+    assert nclob is None
+
+
+# insert statements
+
+@pytest.mark.hanatest
+def test_insert_single_string_blob_row(connection, test_lob_table):
+    """Insert a single row providing blob data in string format (argument order: name, blob)"""
+    cursor = connection.cursor()
+    blob_data = 'ab \0x1 \0x17 yz'
+    cursor.execute("insert into %s (name, fblob) values (:1, :2)" % TABLE, ['blob1', blob_data])
+    blob = cursor.execute("select fblob from %s where name='blob1' " % TABLE).fetchone()[0]
+    assert blob.read() == blob_data
+
+
+@pytest.mark.hanatest
+def test_insert_single_object_blob_row(connection, test_lob_table):
+    """Insert a single row providing blob data as LOB object (argument order: blob, name)"""
+    cursor = connection.cursor()
+    blob_data = 'ab \0x1 \0x17 yz'
+    blob_obj = lobs.Blob(blob_data)
+    cursor.execute("insert into %s (fblob, name) values (:1, :2)" % TABLE, [blob_obj, 'blob1'])
+    blob = cursor.execute("select fblob from %s where name='blob1' " % TABLE).fetchone()[0]
+    assert blob.read() == blob_data
+
+
+@pytest.mark.hanatest
+def test_insert_single_blob_and_clob_row(connection, test_lob_table):
+    """Insert a single row providing blob (as string) and clob (as LOB obj) (argument order: blob, name, clob)"""
+    cursor = connection.cursor()
+    blob_data = 'ab \0x1 \0x17 yz'
+    clob_data = string.ascii_letters
+    clob_obj = lobs.Clob(clob_data)
+    cursor.execute("insert into %s (fblob, name, fclob) values (:1, :2, :3)" % TABLE, [blob_data, 'blob1', clob_obj])
+    blob, clob = cursor.execute("select fblob, fclob from %s where name='blob1' " % TABLE).fetchone()
+    assert blob.read() == blob_data
+    assert clob.read() == clob_data
+
+
+@pytest.mark.hanatest
+def test_insert_many_clob_and_nclob_rows(connection, test_lob_table):
+    """Insert multiple rows of clob and nclob. Providing wild mix of string, unicode, and lob objects"""
+    nclob_data1 = u'เขืองลาจะปเที่ยวเมได้ไาว'   # unicode format
+    clob_data1 = string.ascii_letters[:10]
+    nclob_data2 = 'ずはしにさはる事侍'  # string format
+    clob_data2 = string.ascii_letters[10:20]
+    nclob_data3 = 'λάμβδαี่'   # string format
+    nclob_obj = lobs.NClob(nclob_data3)
+    clob_data3 = string.ascii_letters[20:30]
+    clob_obj = lobs.Clob(clob_data3)
+    cursor = connection.cursor()
+
+    cursor.executemany("insert into %s (fnclob, name, fclob) values (:1, :2, :3)" % TABLE,
+                       [[nclob_data1, 'blob1', clob_data1],
+                        [nclob_data2, 'blob2', clob_data2],
+                        [nclob_obj, 'blob3', clob_obj]])
+
+    connection.commit()
+    cursor = connection.cursor()
+    rows = cursor.execute("select name, fnclob, fclob from %s order by name" % TABLE).fetchall()
+    assert len(rows) == 3
+
+    n_name, n_nclob, n_clob = rows[0]
+    assert n_name == 'blob1'
+    assert n_nclob.read() == nclob_data1
+    assert n_clob.read() == clob_data1
+
+    n_name, n_nclob, n_clob = rows[1]
+    assert n_name == 'blob2'
+    assert n_nclob.read() == nclob_data2.decode('utf8')
+    assert n_clob.read() == clob_data2
+
+    n_name, n_nclob, n_clob = rows[2]
+    assert n_name == 'blob3'
+    assert n_nclob.read() == nclob_data3.decode('utf8')
+    assert n_clob.read() == clob_data3
+
+
+@pytest.mark.hanatest
+def test_insert_to_large_data_raises(connection, test_lob_table):
+    """Trying to insert data within one single row beyond MAX_MESSAGE_SIZE raises a DataError"""
+    # This is actually not really a lob problem, it can also occur with many large strings in a row.
+    # However uploading lobs with a WriteLob request has not yet been implemented, so providing
+    # a large lob also triggers this error.
+    cursor = connection.cursor()
+    large_blob_data = parts.MAX_MESSAGE_SIZE * u'λ'
+    with pytest.raises(DataError):
+        cursor.execute("insert into %s (name, fblob) values (:1, :2)" % TABLE, ['bigblob', large_blob_data])
+
+
+
+# MORE TESTS TO WRITE:
+# - create cases where writing multiple rows gets split into multiple execute rounds

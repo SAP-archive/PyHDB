@@ -275,7 +275,7 @@ def test_cursor_description_after_execution(connection):
 
 
 @pytest.mark.hanatest
-def test_cursor_executemany(connection, test_table_1):
+def test_cursor_executemany_python_expansion(connection, test_table_1):
     cursor = connection.cursor()
 
     cursor.executemany(
@@ -290,17 +290,19 @@ def test_cursor_executemany(connection, test_table_1):
     result = cursor.fetchall()
     assert result == [('Statement 1',), ('Statement 2',)]
 
-# @pytest.mark.hanatest
-# def test_prepared(connection):
-#     cursor = connection.cursor()
-#
-#     sql_to_prepare = 'select top ? * from test.employees where emp_no > ?'
-#
-#     statement_id = cursor.prepare(sql_to_prepare)
-#
-#     assert statement_id == cursor.prepared_statement_ids[0]
-#
-#     ps = cursor.prepared_statement(statement_id)
-#
-#     assert ps.parameters == ((2, 4, 1, 0, '', 19, 0, 0), (1, 3, 1, 0, '', 10, 0, 0))
 
+@pytest.mark.hanatest
+def test_cursor_executemany_hana_expansion(connection, test_table_1):
+    cursor = connection.cursor()
+
+    cursor.executemany(
+        "INSERT INTO PYHDB_TEST_1 VALUES(:1)",
+        (
+            ("Statement 1",),
+            ("Statement 2",)
+        )
+    )
+
+    cursor.execute("SELECT * FROM PYHDB_TEST_1")
+    result = cursor.fetchall()
+    assert result == [('Statement 1',), ('Statement 2',)]

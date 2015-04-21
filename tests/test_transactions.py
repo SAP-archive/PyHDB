@@ -14,7 +14,7 @@
 
 import pytest
 import pyhdb
-from pyhdb._compat import iter_range
+
 
 def exists_table(connection, name):
     cursor = connection.cursor()
@@ -23,6 +23,7 @@ def exists_table(connection, name):
         (name,)
     )
     return cursor.fetchone() is not None
+
 
 @pytest.fixture
 def test_table_1(request, connection):
@@ -39,6 +40,7 @@ def test_table_1(request, connection):
     def _close():
         cursor.execute('DROP TABLE "PYHDB_TEST_1"')
     request.addfinalizer(_close)
+
 
 @pytest.mark.hanatest
 class TestIsolationBetweenConnections():

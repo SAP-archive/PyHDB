@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import io
 
 import struct
 import logging
@@ -18,7 +19,7 @@ from io import BytesIO
 from weakref import WeakValueDictionary
 
 from pyhdb.exceptions import InterfaceError
-from pyhdb._compat import with_metaclass
+from pyhdb.compat import with_metaclass
 from pyhdb.protocol.constants import part_kinds
 
 MAX_MESSAGE_SIZE = 2**17
@@ -37,7 +38,7 @@ class Message(object):
 
     # Documentation Notation:
     # I8 I4 UI4 UI4 I2 I1 B[9]
-    struct = struct.Struct('qiIIhb9B')
+    header_struct = struct.Struct('qiIIhb9B')
 
     _session_id = None
     _packet_count = None
@@ -50,7 +51,7 @@ class Message(object):
         elif isinstance(segments, (list, tuple)):
             self.segments = segments
         else:
-            self.segments = [segments,]
+            self.segments = [segments]
 
     @property
     def session_id(self):
@@ -70,40 +71,48 @@ class Message(object):
             self._packet_count = self.connection.get_next_packet_count()
         return self._packet_count
 
-    @property
-    def payload(self):
-        """
-        Build payload of message.
-        """
-        _payload = b""
+    def build_payload(self, payload):
+        """ Build payload of message. """
         for segment in self.segments:
-            _payload += segment.pack(commit=self.connection.autocommit)
-        return _payload
+            segment.pack(payload, commit=self.connection.autocommit)
 
     def pack(self):
-        """
-        Pack message to binary stream.
-        """
-        payload = self.payload
+        """ Pack message to binary stream. """
+        payload = io.BytesIO()
+        # Advance num bytes equal to header size - the header is written later
+        # after the payload of all segments and parts has been written:
+        msg_header_size = self.header_struct.size
+        payload.seek(msg_header_size, io.SEEK_CUR)
 
-        packet_length = len(payload)
+        # Write out payload of segments and parts:
+        self.build_payload(payload)
+
+        packet_length = len(payload.getvalue()) - msg_header_size
         total_space = MAX_MESSAGE_SIZE - MESSAGE_HEADER_SIZE
         count_of_segments = len(self.segments)
 
-        return self.struct.pack(
+        header = self.header_struct.pack(
             self.session_id,
             self.packet_count,
             packet_length,
             total_space,
             count_of_segments,
             *[0] * 10    # Reserved
-        ) + payload
+        )
+        # Go back to begining of payload for writing message header:
+        payload.seek(0)
+        payload.write(header)
+        payload.seek(0, io.SEEK_END)
+        return payload
 
     def send(self):
         """
         Send message over connection and returns the reply message.
         """
-        return self.connection._send_message(self.pack())
+        payload = self.pack()
+        # from pyhdb.lib.stringlib import humanhexlify
+        # print humanhexlify(payload.getvalue())
+        return self.connection._send_message(payload.getvalue())
 
     @classmethod
     def unpack_reply(cls, connection, header, payload):
@@ -121,10 +130,12 @@ class Message(object):
         reply._packet_count = header[1]
         return reply
 
+
 class BaseSegment(object):
 
     # I4 I4 I2 I2 I1
     header_struct = struct.Struct('<iihhb')
+    segment_kind = None
 
     def __init__(self, parts=None):
         if parts is None:
@@ -132,17 +143,7 @@ class BaseSegment(object):
         elif isinstance(parts, (list, tuple)):
             self.parts = parts
         else:
-            self.parts = [parts,]
-
-    def payload(self):
-        remaining_size = MAX_SEGMENT_SIZE - SEGMENT_HEADER_SIZE
-
-        payload = b""
-        for parts in self.parts:
-            payload += parts.pack(remaining_size)
-            remaining_size -= len(payload)
-
-        return payload
+            self.parts = [parts]
 
     @property
     def offset(self):
@@ -153,29 +154,62 @@ class BaseSegment(object):
         return 1
 
     @property
-    def kind(self):
-        raise NotImplemented
+    def header_size(self):
+        return self.header_struct.size
 
-    def pack(self, **kwargs):
-        payload = self.payload()
+    def build_payload(self, payload):
+        """Build payload of all parts and write them into the payload buffer"""
+        remaining_size = MAX_SEGMENT_SIZE - SEGMENT_HEADER_SIZE
 
-        return self.header_struct.pack(
-            SEGMENT_HEADER_SIZE + len(payload),
+        for part in self.parts:
+            part_payload = part.pack(remaining_size)
+            payload.write(part_payload)
+            remaining_size -= len(part_payload)
+
+    def pack(self, payload, **kwargs):
+
+        # remember position in payload object:
+        payload_pos = payload.tell()
+
+        # Advance num bytes equal to header size. The header is written later
+        # after the payload of all segments and parts has been written:
+        payload.seek(self.header_size, io.SEEK_CUR)
+
+        # Write out payload of parts:
+        self.build_payload(payload)
+        payload_length = payload.tell() - payload_pos  # calc length of parts payload
+
+        header = self.header_struct.pack(
+            payload_length,
             self.offset,
             len(self.parts),
             self.number,
-            self.kind
-        ) + self.pack_additional_header(**kwargs) + payload
+            self.segment_kind
+        ) + self.pack_additional_header(**kwargs)
+
+        # Go back to beginning of payload header for writing segment header:
+        payload.seek(payload_pos)
+        payload.write(header)
+        # Put file pointer at the end of the bffer so that next segment can be appended:
+        payload.seek(0, io.SEEK_END)
+
+    def pack_additional_header(self, **kwargs):
+        raise NotImplemented
+
 
 class RequestSegment(BaseSegment):
 
-    kind = 1
+    segment_kind = 1
     # I1 I1 I1 B[8]
     request_header_struct = struct.Struct('bbb8x')
 
     def __init__(self, message_type, parts=None):
         super(RequestSegment, self).__init__(parts)
         self.message_type = message_type
+
+    @property
+    def header_size(self):
+        return self.header_struct.size + self.request_header_struct.size
 
     @property
     def command_options(self):
@@ -188,15 +222,20 @@ class RequestSegment(BaseSegment):
             self.command_options
         )
 
+
 class ReplySegment(BaseSegment):
 
-    kind = 2
+    segment_kind = 2
     # I1 I2 B[8]
     reply_header_struct = struct.Struct('<bh8B')
 
     def __init__(self, function_code, parts=None):
         super(ReplySegment, self).__init__(parts)
         self.function_code = function_code
+
+    @property
+    def header_size(self):
+        return self.header_struct.size + self.reply_header_struct.size
 
     @classmethod
     def unpack_from(cls, payload, expected_segments):
@@ -260,28 +299,22 @@ class ReplySegment(BaseSegment):
             tuple(Part.unpack_from(payload, expected_parts=header[2]))
         )
 
-    def pack(self):
-        raise NotImplemented
 
 part_mapping = WeakValueDictionary()
+
 
 class PartMeta(type):
     """
     Meta class for part classes which also add them into part_mapping.
     """
 
-    def __new__(cls, name, bases, attrs):
-        part_class = super(PartMeta, cls).__new__(cls, name, bases, attrs)
-        if not hasattr(part_class, "kind"):
-            return part_class
-
-        if not -128 <= part_class.kind <= 127:
-            raise InterfaceError(
-                "%s part kind must be between -128 and 127" %
-                part_class.__name__
-            )
-
-        part_mapping[part_class.kind] = part_class
+    def __new__(mcs, name, bases, attrs):
+        part_class = super(PartMeta, mcs).__new__(mcs, name, bases, attrs)
+        if part_class.kind:
+            if not -128 <= part_class.kind <= 127:
+                raise InterfaceError("%s part kind must be between -128 and 127" % part_class.__name__)
+            # Register new part class is registry dictionary for later lookup:
+            part_mapping[part_class.kind] = part_class
         return part_class
 
 
@@ -289,11 +322,14 @@ class Part(with_metaclass(PartMeta, object)):
 
     header_struct = struct.Struct('<bbhiii')
     attribute = 0
+    kind = None
+    bigargumentcount = 0  # what is this useful for? Seems to be always zero ...
 
     # Attribute to get source of part
     source = 'client'
 
     def pack(self, remaining_size):
+        """Pack data of part into binary format"""
         arguments_count, payload = self.pack_data()
         payload_length = len(payload)
 
@@ -301,10 +337,11 @@ class Part(with_metaclass(PartMeta, object)):
         if payload_length % 8 != 0:
             payload += b"\x00" * (8 - payload_length % 8)
 
-        return self.header_struct.pack(
-            self.kind, self.attribute, arguments_count, 0,
-            payload_length, remaining_size
-        ) + payload
+        return self.header_struct.pack(self.kind, self.attribute, arguments_count, self.bigargumentcount,
+                                       payload_length, remaining_size) + payload
+
+    def pack_data(self):
+        raise NotImplemented()
 
     @classmethod
     def unpack_from(cls, payload, expected_parts):
@@ -326,7 +363,7 @@ class Part(with_metaclass(PartMeta, object)):
             part_payload = BytesIO(payload.read(part_payload_size))
 
             try:
-                PartClass = part_mapping[part_header[0]]
+                _PartClass = part_mapping[part_header[0]]
             except KeyError:
                 raise InterfaceError(
                     "Unknown part kind %s" % part_header[0]
@@ -335,15 +372,15 @@ class Part(with_metaclass(PartMeta, object)):
             msg = 'Part Header (%d/%d, 16 bytes): partkind: %s(%d), ' \
                   'partattributes: %d, argumentcount: %d, bigargumentcount: %d'\
                   ', bufferlength: %d, buffersize: %d'
-            debug(msg, num_parts+1, expected_parts, PartClass.__name__,
+            debug(msg, num_parts+1, expected_parts, _PartClass.__name__,
                   *part_header[:6])
             debug('Read %d bytes payload for part %d',
                   part_payload_size, num_parts + 1)
-            init_arguments = PartClass.unpack_data(
+            init_arguments = _PartClass.unpack_data(
                 part_header[2], part_payload
             )
             debug('Part data: %s', init_arguments)
-            part = PartClass(*init_arguments)
+            part = _PartClass(*init_arguments)
             part.attribute = part_header[1]
             part.source = 'server'
 

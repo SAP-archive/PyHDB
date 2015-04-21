@@ -14,7 +14,7 @@
 
 import io
 import logging
-from headers import LobHeader
+from headers import ReadLobHeader
 from pyhdb.protocol.base import RequestSegment
 from pyhdb.protocol.constants import message_types, type_codes
 from pyhdb.protocol.parts import ReadLobRequest
@@ -30,50 +30,48 @@ def from_payload(type_code, payload, connection):
     """Generator function to create lob from payload.
     Depending on lob type a BLOB, CLOB, or NCLOB instance will be returned.
     """
-    lob_header = LobHeader(payload)
-    data = payload.read(lob_header.chunk_length) if not lob_header.isnull() else None
-    # print 'raw lob data: %r' % data
-    LobClass = LOB_TYPE_CODE_MAP[type_code]
-    lob = LobClass(connection, lob_header, init_value=data)
-    recv_log.debug('Lob Header %s' % str(lob))
+    lob_header = ReadLobHeader(payload)
+    if lob_header.isnull():
+        lob = None
+    else:
+        data = payload.read(lob_header.chunk_length)
+        # print 'raw lob data: %r' % data
+        _LobClass = LOB_TYPE_CODE_MAP[type_code]
+        lob = _LobClass.from_payload(data, lob_header, connection)
+        recv_log.debug('Lob Header %s' % str(lob))
     return lob
 
 
 class Lob(object):
     """Base class for all LOB classes"""
 
-    IO_Class = io.BytesIO  # should be overridden in subclass
     EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK = 1024
+    type_code = None
+    _IO_Class = None
 
-    def __init__(self, connection, lob_header, init_value=''):
-        self.connection = connection
+    @classmethod
+    def from_payload(cls, lob_header, payload_data, connection):
+        raise NotImplemented()
+
+    def __init__(self, init_value='', lob_header=None, connection=None):
+        self.data = self._init_io_container(init_value)
         self.lob_header = lob_header
-        self.data = self._decode_data(init_value)
-        # self.data = self.IO_Class(init_value)
+        self.connection = connection
         self.data.seek(0)
-        if not self.isnull:
-            self._lob_length = len(self.data.getvalue())
-            # assert self._lob_length == self.lob_header.chunk_length  # just to be sure ;-)
+        self._lob_length = len(self.data.getvalue())
+        # assert self._lob_length == self.lob_header.chunk_length  # just to be sure ;-)
 
-    @property
-    def isnull(self):
-        """Return whether LOB is null or not"""
-        return self.lob_header.isnull()
-
-    def _decode_data(self, init_value):
-        raise NotImplementedError()
+    def _init_io_container(self, init_value):
+        raise NotImplemented()
 
     def tell(self):
         """Return position of pointer in lob buffer"""
-        return self.data.tell() if not self.isnull else None
+        return self.data.tell()
 
     def seek(self, offset, whence=SEEK_SET):
         """Seek pointer in lob data buffer to requested position.
         Might trigger further loading of data from the database if the pointer is beyond currently read data.
         """
-        if self.isnull:
-            return
-
         # A nice trick is to (ab)use BytesIO.seek() to go to the desired position for easier calculation.
         # This will not add any data to the buffer however - very convenient!
         new_pos = self.data.seek(offset, whence)
@@ -97,9 +95,6 @@ class Lob(object):
         Might trigger further loading of data from the database if the number of items requested for
         reading is larger than what is currently buffered.
         """
-        if self.isnull:
-            return None
-
         pos = self.tell()
         num_items_to_read = n if n != -1 else self.lob_header.total_lob_length - pos
         # calculate the position of the file pointer after data was read:
@@ -144,41 +139,66 @@ class Lob(object):
 
     def getvalue(self):
         """Return all currently available lob data (might be shorter than the one in the database)"""
-        if self.isnull:
-            return None
-        return self.data.getvalue() if not self.isnull else None
+        return self.data.getvalue()
+
+    def __repr__(self):
+        return '<%s %s>' % (self.__class__.__name__, str(self.lob_header))
 
     def __str__(self):
-        return '%s: %s' % (self.__class__.__name__, str(self.lob_header))
+        """Convert lob into its string/unicode format"""
+        return self.encode()
+
+    def encode(self):
+        """Encode lob data into binary format"""
+        raise NotImplemented()
 
 
 class Blob(Lob):
     """Instance of this class will be returned for a BLOB object in a db result"""
-    IO_Class = io.BytesIO
+    type_code = type_codes.BLOB
 
-    def _decode_data(self, init_value):
-        """Decode binary lob data. In this case (BLOB) no conversion is necessary"""
+    @classmethod
+    def from_payload(cls, payload_data, lob_header, connection):
+        return cls(payload_data, lob_header, connection)
+
+    def _init_io_container(self, init_value):
+        if isinstance(init_value, io.BytesIO):
+            return init_value
         return io.BytesIO(init_value)
 
+    def encode(self):
+        return self.getvalue()
 
-class Clob(Lob):
+
+class _CharLob(Lob):
+    encoding = None
+
+    @classmethod
+    def from_payload(cls, payload_data, lob_header, connection):
+        unicode_value = payload_data.decode(cls.encoding)
+        return cls(unicode_value, lob_header, connection)
+
+    def _init_io_container(self, init_value):
+        if isinstance(init_value, io.StringIO):
+            return init_value
+        if isinstance(init_value, str):
+            init_value = init_value.decode(self.encoding)
+        return io.StringIO(init_value)
+
+    def encode(self):
+        return self.getvalue().encode(self.encoding)
+
+
+class Clob(_CharLob):
     """Instance of this class will be returned for a CLOB object in a db result"""
-    IO_Class = io.StringIO
-
-    def _decode_data(self, init_value):
-        """Decode binary lob data. In this case (BLOB) no conversion is necessary"""
-        unicode_value = None if init_value is None else init_value.decode('utf8')
-        return io.StringIO(unicode_value)
+    type_code = type_codes.CLOB
+    encoding = 'ascii'
 
 
-class NClob(Lob):
+class NClob(_CharLob):
     """Instance of this class will be returned for a NCLOB object in a db result"""
-    IO_Class = io.StringIO
-
-    def _decode_data(self, init_value):
-        """Decode binary lob data. Decode utf8 into unicode in this case"""
-        unicode_value = None if init_value is None else init_value.decode('utf8')
-        return io.StringIO(unicode_value)
+    type_code = type_codes.NCLOB
+    encoding = 'utf8'
 
 
 LOB_TYPE_CODE_MAP = {

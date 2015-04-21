@@ -84,7 +84,7 @@ class Connection(object):
                 # Read first message header
                 raw_header = self._socket.recv(32)
                 try:
-                    header = Message.struct.unpack(raw_header)
+                    header = Message.header_struct.unpack(raw_header)
                 except struct.error:
                     raise Exception("Invalid message header received")
 

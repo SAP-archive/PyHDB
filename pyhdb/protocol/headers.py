@@ -13,26 +13,16 @@
 # language governing permissions and limitations under the License.
 
 import struct
+from pyhdb.protocol.constants import type_codes
 
 
-class LobHeader(object):
-    """
-    LOB header structure (incomplete in Command Network Protocol Reference docs):
-    Total header size is 32 bytes. The first columns denotes the offset:
-
-    00: TYPE:    I1       Type of data
-    01: OPTIONS: I1       Options that further refine the descriptor
-    -> no further data to be read for LOB if options->isNull is true
-    02: RESERVED: I2      (ignore this)
-    04: CHARLENGTH: I8    Length of string (for asci and unicode)
-    12: BYTELENGTH: I8    Number of bytes of LOB
-    20: LOCATORID: B8     8 bytes serving as locator id for LOB
-    28: CHUNKLENGTH: I4   Number of bytes of LOB chunk in this result set
-    32: LOB data if CHUNKLENGTH > 0
-    """
+class BaseLobheader(object):
+    """Base LobHeader class"""
     BLOB_TYPE = 1
     CLOB_TYPE = 2
     NCLOB_TYPE = 3
+
+    LOB_TYPES = {type_codes.BLOB: BLOB_TYPE, type_codes.CLOB: CLOB_TYPE, type_codes.NCLOB: NCLOB_TYPE}
 
     # Bit masks for LOB options (field 2 in header):
     LOB_OPTION_ISNULL = 0x01
@@ -45,19 +35,53 @@ class LobHeader(object):
         LOB_OPTION_LASTDATA: 'last_data'
     }
 
-    blob_struct_part1 = struct.Struct('<BB')       # read blob type and 'options' field
-    blob_struct_part2 = struct.Struct('<2sQQ8sI')  # only read if blob is not null (see options field)
+
+class WriteLobHeader(BaseLobheader):
+    """Write-LOB header structure used when sending data to Hana.
+    Total header size is 10 bytes.
+    Note that the lob data does not come immediately after the lob header but AFTER all rowdata headers
+    have been written to the part header!!!
+
+    00: TYPECODE: I1
+    01: OPTIONS: I1       Options that further refine the descriptor
+    02: LENGTH: I4        Length of bytes of data that follows
+    06: POSITION: I4      Position P of the lob data in the part (startinb at the beginning of the part)
+    ...
+    P:  LOB data
+    """
+    header_struct = struct.Struct('<BBII')
+
+
+class ReadLobHeader(BaseLobheader):
+    """
+    Read-LOB header structure used when receiving data from Hana.
+    (incomplete in Command Network Protocol Reference docs):
+    Total header size is 32 bytes. The first columns denotes the offset:
+
+    00: TYPE:    I1       Type of data
+    01: OPTIONS: I1       Options that further refine the descriptor
+    -> no further data to be read for LOB if options->isNull is true
+    02: RESERVED: I2      (ignore this)
+    04: CHARLENGTH: I8    Length of string (for asci and unicode)
+    12: BYTELENGTH: I8    Number of bytes of LOB
+    20: LOCATORID: B8     8 bytes serving as locator id for LOB
+    28: CHUNKLENGTH: I4   Number of bytes of LOB chunk in this result set
+    32: LOB data if CHUNKLENGTH > 0
+    """
+    header_struct_part1 = struct.Struct('<BB')       # read blob type and 'options' field
+    header_struct_part2 = struct.Struct('<2sQQ8sI')  # only read if blob is not null (see options field)
 
     def __init__(self, payload):
         """Parse LOB header from payload"""
-        raw_header_p1 = payload.read(self.blob_struct_part1.size)
-        self.lob_type, self.options = self.blob_struct_part1.unpack(raw_header_p1)
+        raw_header_p1 = payload.read(self.header_struct_part1.size)
+        self.lob_type, self.options = self.header_struct_part1.unpack(raw_header_p1)
 
         if not self.isnull():
-            raw_header_p2 = payload.read(self.blob_struct_part2.size)
-            header = self.blob_struct_part2.unpack(raw_header_p2)
+            raw_header_p2 = payload.read(self.header_struct_part2.size)
+            header = self.header_struct_part2.unpack(raw_header_p2)
             (reserved, self.char_length, self.byte_length, self.locator_id, self.chunk_length) = header
-            # print 'raw lob header: %s' % pyhdb.lib.allhexlify(raw_header_p1 + raw_header_p2)
+            # from pyhdb.lib.stringlib import allhexlify
+            # print 'raw lob header: %s' % allhexlify(raw_header_p1 + raw_header_p2)
 
             # Set total_lob_length attribute differently for binary and character lobs:
             self.total_lob_length = self.byte_length if self.lob_type == self.BLOB_TYPE else self.char_length

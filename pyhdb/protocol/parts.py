@@ -12,15 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Enable absolute import, otherwise the 'string' module of stdlib will not be found (conflicts with pyhdb string.py)
+from __future__ import absolute_import
+
+import io
 import struct
+from types import StringTypes
 from collections import namedtuple
+###
 import pyhdb.protocol.constants.part_kinds
 from pyhdb.protocol import types
 from pyhdb.protocol import constants
-from pyhdb.protocol.base import Part, PartMeta
-from pyhdb.exceptions import InterfaceError, DatabaseError
-from pyhdb._compat import is_text, iter_range, with_metaclass
-from pyhdb.protocol.headers import LobHeader
+from pyhdb.protocol.base import Part, PartMeta, MAX_MESSAGE_SIZE
+from pyhdb.exceptions import InterfaceError, DatabaseError, DataError
+from pyhdb.compat import is_text, iter_range, with_metaclass
+from pyhdb.protocol.headers import ReadLobHeader
 
 
 class Fields(object):
@@ -57,9 +63,9 @@ class Fields(object):
 
 class OptionPartMeta(PartMeta):
 
-    def __new__(cls, name, bases, attrs):
-        part_class = super(OptionPartMeta, cls).__new__(
-            cls, name, bases, attrs
+    def __new__(mcs, name, bases, attrs):
+        part_class = super(OptionPartMeta, mcs).__new__(
+            mcs, name, bases, attrs
         )
         if hasattr(part_class, "option_definition"):
             part_class.option_identifier = dict([
@@ -303,50 +309,120 @@ class ReadLobReply(Part):
     @classmethod
     def unpack_data(cls, argument_count, payload):
         locator_id, options = cls.part_struct_p1.unpack(payload.read(cls.part_struct_p1.size))
-        isNull = options & LobHeader.LOB_OPTION_ISNULL
-        if isNull:
+        is_null = options & ReadLobHeader.LOB_OPTION_ISNULL
+        if is_null:
             # returned LOB is NULL
-            lobdata = isDataIncluded = isLastData = None
-            isNull = True
+            lobdata = is_data_included = is_last_data = None
+            is_null = True
         else:
             chunklength, filler = cls.part_struct_p2.unpack(payload.read(cls.part_struct_p2.size))
-            isDataIncluded = options & LobHeader.LOB_OPTION_DATAINCLUDED
-            if isDataIncluded:
+            is_data_included = options & ReadLobHeader.LOB_OPTION_DATAINCLUDED
+            if is_data_included:
                 lobdata = payload.read()
             else:
                 lobdata = ''
-            isLastData = options & LobHeader.LOB_OPTION_LASTDATA
+            is_last_data = options & ReadLobHeader.LOB_OPTION_LASTDATA
             assert len(lobdata) == chunklength
-        # print 'realobreply unpack data called with args', len(lobdata), isDataIncluded, isLastData
-        return lobdata, isDataIncluded, isLastData, isNull
+        # print 'realobreply unpack data called with args', len(lobdata), is_data_included, is_last_data
+        return lobdata, is_data_included, is_last_data, is_null
 
 
 class Parameters(Part):
-    """
-    Prepared statement parameters' data
-    """
+    """Prepared statement parameters' data """
 
     kind = constants.part_kinds.PARAMETERS
 
     def __init__(self, parameters):
+        """Initialize parameter part
+        :param parameters: A generator producing lists (1 per row) of named tuples containing parameter meta
+                          data and values
+               Example: [Parameter(id=0, datatype=9, length=255, value='row2'), Parameter(id=1, ...), ]
+        :returns: tuple (arguments_count, payload)
+        """
         self.parameters = parameters
 
     def pack_data(self):
-        payload = ''
-        for parameter in self.parameters:
-            type_code, value = parameter[1], parameter[3]
-            try:
-                if type_code in types.String.type_code:
-                    pfield = types.by_type_code[type_code].prepare(value, type_code)
+        payload = io.BytesIO()
+        num_rows = 0
+
+        for row_parameters in self.parameters:
+            # memorize start position of row in buffer if it has to be removed in case that
+            # the maximum message size will be exceeded
+            row_header_start_pos = payload.tell()
+            row_lobs = []
+            row_lob_size_sum = 0
+
+            for parameter in row_parameters:
+                # 'parameter' is a named tuple, created in PreparedStatement.prepare_parameters()
+                type_code, value = parameter.type_code, parameter.value
+                try:
+                    _DataType = types.by_type_code[type_code]
+                except KeyError:
+                    raise InterfaceError("Prepared statement parameter datatype not supported: %d" % type_code)
+
+                if value is None:
+                    pfield = types.NoneType.prepare(type_code)
+                elif type_code in types.String.type_code:
+                    pfield = _DataType.prepare(value, type_code)
                 else:
-                    pfield = types.by_type_code[type_code].prepare(value)
+                    pfield = _DataType.prepare(value)
 
-                print type_code, parameter[3], len(pfield), list(pfield)
-            except KeyError:
-                raise InterfaceError("Prepared statement parameter datatype not supported: %d" % type_code)
+                if type_code in (types.BlobType.type_code, types.ClobType.type_code, types.NClobType.type_code):
+                    lob_header_pos = payload.tell()
+                    # Lob data can be either an instance of a Lob-class, or a string/unicode object, Encode properly:
+                    if isinstance(value, StringTypes):
+                        lob_data = _DataType.encode_value(value)
+                    else:
+                        # assume a LOB instance:
+                        lob_data = value.encode()
+                    row_lobs.append((lob_data, _DataType, lob_header_pos))
+                    row_lob_size_sum += len(lob_data)
 
-            payload += pfield
-        return 1, payload
+                payload.write(pfield)
+
+            if payload.tell() + row_lob_size_sum > MAX_MESSAGE_SIZE:
+                # Last row does not fit anymore into the current message! Remove it from payload
+                # by resetting payload pointer to former position and truncate away last row data:
+                payload.seek(row_header_start_pos)
+                payload.truncate()
+                self.parameters.push_back(row_parameters)  # push back unused row data into generator!
+
+                # Check for case that a row does not fit at all into a part block (i.e. it is the first one):
+                if num_rows == 0:
+                    raise DataError('Parameter row too large to fit into execute statement.'
+                                    'Got: %d bytes, allowed: %d bytes' %
+                                    (payload.tell() + row_lob_size_sum, MAX_MESSAGE_SIZE))
+                break  # jump out of loop - no more rows to be added!
+            else:
+                # Keep row data. Also append actual binary lob data after the end of all parameters:
+                self.pack_lob_data(payload, row_header_start_pos, row_lobs)
+
+            num_rows += 1
+            # payload.seek(row_header_start_pos)
+            # from pyhdb.lib.stringlib import humanhexlify
+            # print 'row', num_rows, humanhexlify(payload.read())
+        return num_rows, payload.getvalue()
+
+    @staticmethod
+    def pack_lob_data(payload, row_header_start_pos, row_lobs):
+        """
+        After parameter row has been written, append the lobs and update the corresponding lob headers
+        with lob position and lob size:
+        :param payload: payload object (io.BytesIO instance)
+        :param row_header_start_pos: absolute position of start position of row within payload
+        :param row_lobs: list of tuples of already binary encoded lob data, their header position and DataType
+        """
+        for lob_data, _DataType, lob_header_position in row_lobs:
+            # _DataType is an instance of types.NClobType/ClobType,BlobType
+            lob_size = len(lob_data)
+            # Calculate position of lob within the binary packed parameter row: (add +1, Hana counts from 1, not 0)
+            lob_pos = payload.tell() - row_header_start_pos + 1
+            payload.write(lob_data)
+            # Write position and size of lob data into lob header block:
+            payload.seek(lob_header_position)
+            payload.write(_DataType.prepare(None, length=lob_size, position=lob_pos))
+            # Set pointer back to end for further writing
+            payload.seek(0, io.SEEK_END)
 
 
 class Authentication(Part):
@@ -454,13 +530,13 @@ class ParameterMetadata(Part):
 
     @classmethod
     def unpack_data(cls, argument_count, payload):
-        ParamMetadata = namedtuple('ParameterMetadata', 'options datatype mode id length fraction')
+        ParamMetadata = namedtuple('ParameterMetadataTuple', 'options datatype mode id length fraction')
         values = []
-        for _ in iter_range(argument_count):
+        for i in iter_range(argument_count):
             param = struct.unpack("bbbbIhhI", payload.read(16))
             if param[4] == 0xffffffff:
                 # no parameter name given
-                param_id = _
+                param_id = i
             else:
                 # offset of the parameter name set
                 payload.seek(param[4], 0)
