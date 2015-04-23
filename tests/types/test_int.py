@@ -19,6 +19,7 @@ getcontext().prec = 36
 import pytest
 from pyhdb.protocol import types
 
+
 @pytest.mark.parametrize("input,expected", [
     (b"\x01\x15\xCD\x5B\x07", 123456789),
     (b"\x01\xB1\x68\xDE\x3A", 987654321),
@@ -28,12 +29,14 @@ def test_unpack_int(input, expected):
     input = BytesIO(input)
     assert types.Int.from_resultset(input) == expected
 
+
 @pytest.mark.parametrize("input,expected", [
     (123456789, '123456789'),
     (987654321, '987654321'),
 ])
 def test_escape_int(input, expected):
     assert types.Int.to_sql(input) == expected
+
 
 @pytest.mark.parametrize("input,expected", [
     (b"\x01\x00", 0),
@@ -46,6 +49,7 @@ def test_unpack_tinyint(input, expected):
     input = BytesIO(input)
     assert types.TinyInt.from_resultset(input) == expected
 
+
 @pytest.mark.parametrize("input,expected", [
     (b"\x01\x39\x30", 12345),
     (b"\x01\xC7\xCF", -12345),
@@ -55,6 +59,7 @@ def test_unpack_smallint(input, expected):
     input = BytesIO(input)
     assert types.SmallInt.from_resultset(input) == expected
 
+
 @pytest.mark.parametrize("input,expected", [
     (b"\x01\x00\x00\x00\x00\x01\x00\x00\x00", 2**32),
     (b"\x01\x00\x00\x00\x00\xFF\xFF\xFF\xFF", -2**32),
@@ -63,6 +68,7 @@ def test_unpack_smallint(input, expected):
 def test_unpack_bigint(input, expected):
     input = BytesIO(input)
     assert types.BigInt.from_resultset(input) == expected
+
 
 @pytest.mark.parametrize("input,expected", [
     (b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x70",
@@ -76,6 +82,7 @@ def test_unpack_decimal(input, expected):
     input = BytesIO(input)
     assert types.Decimal.from_resultset(input) == expected
 
+
 @pytest.mark.parametrize("input,expected", [
     (Decimal('3.14159265359'), '3.14159265359'),
     (Decimal('-312313212312321.1245678910111213142'),
@@ -83,6 +90,7 @@ def test_unpack_decimal(input, expected):
 ])
 def test_escape_decimal(input, expected):
     assert types.Decimal.to_sql(input) == expected
+
 
 @pytest.mark.parametrize("input,expected", [
     (b"\x85\xEB\x21\x41", float("10.119999885559082")),
@@ -92,6 +100,7 @@ def test_escape_decimal(input, expected):
 def test_unpack_real(input, expected):
     input = BytesIO(input)
     assert types.Real.from_resultset(input) == expected
+
 
 @pytest.mark.parametrize("input,expected", [
     (b"\x3D\x0A\xD7\xA3\x70\x3D\x24\x40", float("10.12")),

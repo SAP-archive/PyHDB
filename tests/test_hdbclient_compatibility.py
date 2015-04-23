@@ -15,12 +15,14 @@
 import pytest
 from pyhdb.connection import Connection
 
+
 def test_getautocommit():
     connection = Connection("localhost", 30015, "Fuu", "Bar")
     assert not connection.getautocommit()
 
     connection.autocommit = True
     assert connection.getautocommit()
+
 
 def test_setautocommit():
     connection = Connection("localhost", 30015, "Fuu", "Bar")
@@ -30,6 +32,7 @@ def test_setautocommit():
 
     connection.setautocommit(True)
     assert connection.autocommit
+
 
 @pytest.mark.hanatest
 def test_isconnected(hana_system):

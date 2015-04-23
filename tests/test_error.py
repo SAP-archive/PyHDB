@@ -14,7 +14,8 @@
 
 import pytest
 from pyhdb.protocol.segments import RequestSegment
-from pyhdb.exceptions import ProgrammingError, DatabaseError
+from pyhdb.exceptions import DatabaseError
+
 
 @pytest.mark.hanatest
 def test_invalid_request(connection):
@@ -24,6 +25,7 @@ def test_invalid_request(connection):
 
     with pytest.raises(DatabaseError):
         message.send()
+
 
 @pytest.mark.hanatest
 def test_invalid_sql(connection):

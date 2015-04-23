@@ -419,7 +419,5 @@ def test_insert_to_large_data_raises(connection, test_lob_table):
     with pytest.raises(DataError):
         cursor.execute("insert into %s (name, fblob) values (:1, :2)" % TABLE, ['bigblob', large_blob_data])
 
-
-
 # MORE TESTS TO WRITE:
 # - create cases where writing multiple rows gets split into multiple execute rounds

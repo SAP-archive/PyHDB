@@ -13,7 +13,8 @@
 # language governing permissions and limitations under the License.
 
 import pytest
-import pyhdb.cesu8
+import pyhdb.cesu8  # import required to register cesu8 encoding
+
 
 @pytest.mark.parametrize("encoded,unicode_obj", [
     (b"\xed\xa6\x9d\xed\xbd\xb7", u"\U00077777"),
@@ -28,6 +29,7 @@ import pyhdb.cesu8
 def test_pure_cesu8_decode(encoded, unicode_obj):
     assert encoded.decode('cesu-8') == unicode_obj
 
+
 @pytest.mark.parametrize("encoded,unicode_obj", [
     (b"\xc3\xa4", u"\xe4"),
     (b"\xe2\xac\xa1", u"\u2b21"),
@@ -35,9 +37,11 @@ def test_pure_cesu8_decode(encoded, unicode_obj):
 def test_fallback_to_utf8_of_cesu8_decode(encoded, unicode_obj):
     assert encoded.decode('cesu-8') == unicode_obj
 
+
 def test_multiple_chars_in_cesu8_decode():
     encoded = b"\xed\xa0\xbd\xed\xb0\x8d\xed\xa0\xbd\xed\xb1\x8d"
     assert encoded.decode('cesu-8') == u'\U0001f40d\U0001f44d'
+
 
 def test_cesu8_and_utf8_mixed_decode():
     encoded = b"\xed\xa0\xbd\xed\xb0\x8d\x20\x69\x73\x20\x61\x20" \
@@ -59,6 +63,7 @@ def test_cesu8_and_utf8_mixed_decode():
 def test_pure_cesu8_encode(encoded, unicode_obj):
     assert unicode_obj.encode('cesu-8') == encoded
 
+
 @pytest.mark.parametrize("encoded,unicode_obj", [
     (b"\xc3\xa4", u"\xe4"),
     (b"\xe2\xac\xa1", u"\u2b21"),
@@ -66,9 +71,11 @@ def test_pure_cesu8_encode(encoded, unicode_obj):
 def test_fallback_to_utf8_encode(encoded, unicode_obj):
     assert unicode_obj.encode('cesu-8') == encoded
 
+
 def test_multiple_chars_in_cesu8_encode():
     encoded = b"\xed\xa0\xbd\xed\xb0\x8d\xed\xa0\xbd\xed\xb1\x8d"
     assert u'\U0001f40d\U0001f44d'.encode('cesu-8') == encoded
+
 
 def test_cesu8_and_utf8_mixed_encode():
     encoded = b"\xed\xa0\xbd\xed\xb0\x8d\x20\x69\x73\x20\x61\x20" \

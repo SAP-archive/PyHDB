@@ -18,17 +18,20 @@ import pytest
 
 from pyhdb.connection import Connection
 
+
 @pytest.mark.hanatest
 def test_initial_timeout(connection):
-    assert connection.timeout == None
-    assert connection._timeout == None
-    assert connection._socket.gettimeout() == None
+    assert connection.timeout is None
+    assert connection._timeout is None
+    assert connection._socket.gettimeout() is None
+
 
 @pytest.mark.hanatest
 def test_set_timeout_in_init(hana_system):
     connection = Connection(*hana_system, timeout=10)
     assert connection.timeout == 10
     assert connection._timeout == 10
+
 
 @pytest.mark.hanatest
 def test_socket_use_init_timeout(hana_system):
@@ -38,13 +41,15 @@ def test_socket_use_init_timeout(hana_system):
     assert connection._socket.gettimeout() == 10
     connection.close()
 
+
 @pytest.mark.hanatest
 def test_set_timeout_update_socket_setting(connection):
-    assert connection.timeout == None
+    assert connection.timeout is None
 
     connection.timeout = 10
     assert connection.timeout == 10
     assert connection._socket.gettimeout() == 10
+
 
 def test_set_timeout_without_socket():
     connection = Connection("localhost", 30015, "Fuu", "Bar")
