@@ -21,6 +21,7 @@ from io import BytesIO
 from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.constants import message_types
 from pyhdb.protocol.parts import Authentication, Fields
+from pyhdb.protocol.message import Message
 from pyhdb.compat import iter_range
 
 CLIENT_PROOF_SIZE = 32
@@ -39,12 +40,14 @@ class AuthManager(object):
         self.client_proof = None
 
     def perform_handshake(self):
-        response = self.connection.Message(
+        request = Message.new_request(
+            self.connection,
             RequestSegment(
                 message_types.AUTHENTICATE,
                 Authentication(self.user, {self.method: self.client_key})
             )
-        ).send()
+        )
+        response = self.connection.send_request(request)
 
         auth_part = response.segments[0].parts[0]
         if self.method not in auth_part.methods:

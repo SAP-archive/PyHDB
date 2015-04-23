@@ -28,57 +28,56 @@ class DummySegment(RequestSegment):
         payload.write(b"\x00" * 10)
 
 
-class TestBaseMessage(object):
+class TestRequestMessage(object):
     """Test Message class"""
     @staticmethod
-    def test_message_init_without_segment():
+    def test_request_message_init_without_segment():
         connection = Connection("localhost", 30015, "Fuu", "Bar")
-        msg = Message(connection)
+        msg = Message.new_request(connection)
         assert msg.segments == []
 
     @staticmethod
-    def test_message_init_with_single_segment():
+    def test_request_message_init_with_single_segment():
         connection = Connection("localhost", 30015, "Fuu", "Bar")
 
-        request = RequestSegment(0)
-        msg = Message(connection, request)
-        assert msg.segments == [request]
+        request_seg = RequestSegment(0)
+        msg = Message.new_request(connection, request_seg)
+        assert msg.segments == [request_seg]
 
     @staticmethod
-    def test_message_init_with_multiple_segments_as_list():
+    def test_request_message_init_with_multiple_segments_as_list():
         connection = Connection("localhost", 30015, "Fuu", "Bar")
 
-        request_1 = RequestSegment(0)
-        request_2 = RequestSegment(1)
-        msg = Message(connection, [request_1, request_2])
-        assert msg.segments == [request_1, request_2]
+        request_seg_1 = RequestSegment(0)
+        request_seg_2 = RequestSegment(1)
+        msg = Message.new_request(connection, [request_seg_1, request_seg_2])
+        assert msg.segments == [request_seg_1, request_seg_2]
 
     @staticmethod
-    def test_message_init_with_multiple_segments_as_tuple():
+    def test_request_message_init_with_multiple_segments_as_tuple():
         connection = Connection("localhost", 30015, "Fuu", "Bar")
 
-        request_1 = RequestSegment(0)
-        request_2 = RequestSegment(1)
-        msg = Message(connection, (request_1, request_2))
-        assert msg.segments == (request_1, request_2)
+        request_seg_1 = RequestSegment(0)
+        request_seg_2 = RequestSegment(1)
+        msg = Message.new_request(connection, (request_seg_1, request_seg_2))
+        assert msg.segments == (request_seg_1, request_seg_2)
 
     @staticmethod
-    def test_message_use_last_session_id():
+    def test_request_message_use_last_session_id():
         connection = Connection("localhost", 30015, "Fuu", "Bar")
         connection.session_id = 1
 
-        msg = Message(connection)
+        msg = Message.new_request(connection)
         assert msg.session_id == connection.session_id
 
         connection.session_id = 5
         assert msg.session_id == connection.session_id
 
-    @mock.patch('pyhdb.connection.Connection.get_next_packet_count',
-                return_value=0)
-    def test_message_keep_packet_count(self, get_next_packet_count):
+    @mock.patch('pyhdb.connection.Connection.get_next_packet_count', return_value=0)
+    def test_request_message_keep_packet_count(self, get_next_packet_count):
         connection = Connection("localhost", 30015, "Fuu", "Bar")
 
-        msg = Message(connection)
+        msg = Message.new_request(connection)
         assert msg.packet_count == 0
 
         # Check two time packet count of the message
@@ -91,7 +90,7 @@ class TestBaseMessage(object):
     def test_payload_pack(self, autocommit):
         connection = Connection("localhost", 30015, "Fuu", "Bar", autocommit=autocommit)
 
-        msg = Message(connection, [DummySegment(None)])
+        msg = Message.new_request(connection, [DummySegment(None)])
         payload = BytesIO()
         msg.build_payload(payload)
 
@@ -101,7 +100,7 @@ class TestBaseMessage(object):
     def test_pack():
         connection = Connection("localhost", 30015, "Fuu", "Bar")
 
-        msg = Message(connection, [DummySegment(None)])
+        msg = Message.new_request(connection, [DummySegment(None)])
         payload = msg.pack()
         packed = payload.getvalue()
         assert isinstance(packed, bytes)
@@ -128,22 +127,21 @@ class TestBaseMessage(object):
         assert packed[32:42] == b"\x00" * 10
 
 
-class TestReceivedMessage(object):
+class TestReplyMessage(object):
 
     @staticmethod
     def test_message_use_received_session_id():
         connection = Connection("localhost", 30015, "Fuu", "Bar")
-        msg = Message(connection)
-        msg._session_id = 12345
+        connection.session_id = 12345
+        msg = Message(connection.session_id, connection.get_next_packet_count())
 
         assert msg.session_id == 12345
 
-    @mock.patch('pyhdb.connection.Connection.get_next_packet_count',
-                return_value=0)
+    @mock.patch('pyhdb.connection.Connection.get_next_packet_count', return_value=0)
     def test_message_use_received_packet_count(self, get_next_packet_count):
         connection = Connection("localhost", 30015, "Fuu", "Bar")
-        msg = Message(connection)
-        msg._packet_count = 12345
+        connection.packet_count = 12345
+        msg = Message(connection.session_id, connection.packet_count)
 
         assert msg.packet_count == 12345
         assert not get_next_packet_count.called

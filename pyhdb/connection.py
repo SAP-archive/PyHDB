@@ -23,6 +23,7 @@ from pyhdb.auth import AuthManager
 from pyhdb.cursor import Cursor
 from pyhdb.exceptions import Error, OperationalError, ConnectionTimedOutError
 from pyhdb.protocol.segments import RequestSegment
+from pyhdb.protocol.headers import MessageHeader
 from pyhdb.protocol.message import Message
 from pyhdb.protocol.parts import ClientId, ConnectOptions
 from pyhdb.protocol.constants import message_types, function_codes, DEFAULT_CONNECTION_OPTIONS
@@ -59,9 +60,7 @@ class Connection(object):
         self._packet_count_lock = threading.Lock()
 
     def _open_socket_and_init_protocoll(self):
-        self._socket = socket.create_connection(
-            (self.host, self.port), self._timeout
-        )
+        self._socket = socket.create_connection((self.host, self.port), self._timeout)
 
         # Initialization Handshake
         self._socket.sendall(INITIALIZATION_BYTES)
@@ -73,7 +72,11 @@ class Connection(object):
         self.product_version = version_struct.unpack(response[0:3])
         self.protocol_version = version_struct.unpack_from(response[3:8])
 
-    def _send_message(self, packed_message):
+    def send_request(self, message):
+        payload = message.pack()
+        return self.__send_message(payload.getvalue())
+
+    def __send_message(self, packed_message):
         """
         Private method to send packed message and receive
         the reply message.
@@ -85,7 +88,7 @@ class Connection(object):
                 # Read first message header
                 raw_header = self._socket.recv(32)
                 try:
-                    header = Message.header_struct.unpack(raw_header)
+                    header = MessageHeader(*Message.header_struct.unpack(raw_header))
                 except struct.error:
                     raise Exception("Invalid message header received")
 
@@ -95,8 +98,8 @@ class Connection(object):
                 msg = 'Message header (32 bytes): sessionid: %d, ' \
                       'packetcount: %d, length: %d, size: %d, noofsegm: %d'
                 debug(msg, *(header[:5]))
-                while received < header[2]:
-                    _payload = self._socket.recv(header[2] - received)
+                while received < header.payload_length:
+                    _payload = self._socket.recv(header.payload_length - received)
                     if not _payload:
                         break
                     payload += _payload
@@ -106,20 +109,15 @@ class Connection(object):
                 payload = BytesIO(payload)
 
                 # Keep session id of connection up to date
-                if self.session_id != header[0]:
-                    self.session_id = header[0]
+                if self.session_id != header.session_id:
+                    self.session_id = header.session_id
                     self.packet_count = -1
         except socket.timeout:
             raise ConnectionTimedOutError()
         except (IOError, OSError) as error:
-            raise OperationalError(
-                "Lost connection to HANA server (%r)" % error
-            )
+            raise OperationalError("Lost connection to HANA server (%r)" % error)
 
         return Message.unpack_reply(self, header, payload)
-
-    def Message(self, *args, **kwargs):
-        return Message(self, *args, **kwargs)
 
     def get_next_packet_count(self):
         with self._packet_count_lock:
@@ -138,7 +136,8 @@ class Connection(object):
             # with the agreed authentication data
             agreed_auth_part = self._auth_manager.perform_handshake()
 
-            self.Message(
+            request = Message.new_request(
+                self,
                 RequestSegment(
                     message_types.CONNECT,
                     (
@@ -149,7 +148,8 @@ class Connection(object):
                         ConnectOptions(DEFAULT_CONNECTION_OPTIONS)
                     )
                 )
-            ).send()
+            )
+            self.send_request(request)
 
     def close(self):
         with self._socket_lock:
@@ -157,10 +157,11 @@ class Connection(object):
                 raise Error("Connection already closed")
 
             try:
-                reply = self.Message(
+                request = Message.new_request(
+                    self,
                     RequestSegment(message_types.DISCONNECT)
-                ).send()
-
+                )
+                reply = self.send_request(request)
                 if reply.segments[0].function_code != \
                    function_codes.DISCONNECT:
                     raise Error("Connection wasn't closed correctly")
@@ -185,16 +186,20 @@ class Connection(object):
     def commit(self):
         self._check_closed()
 
-        self.Message(
+        request = Message.new_request(
+            self,
             RequestSegment(message_types.COMMIT)
-        ).send()
+        )
+        self.send_request(request)
 
     def rollback(self):
         self._check_closed()
 
-        self.Message(
+        request = Message.new_request(
+            self,
             RequestSegment(message_types.ROLLBACK)
-        ).send()
+        )
+        self.send_request(request)
 
     @property
     def timeout(self):

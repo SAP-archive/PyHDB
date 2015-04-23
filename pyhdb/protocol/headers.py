@@ -12,8 +12,14 @@
 # either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 
+import collections
 import struct
+###
 from pyhdb.protocol.constants import type_codes
+
+
+MessageHeader = collections.namedtuple(
+    'MessageHeader', 'session_id, packet_count, payload_length, varpartsize, num_segments, packet_options, reserved')
 
 
 class BaseLobheader(object):

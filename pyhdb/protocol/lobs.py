@@ -15,6 +15,7 @@
 import io
 import logging
 from headers import ReadLobHeader
+from pyhdb.protocol.message import Message
 from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.constants import message_types, type_codes
 from pyhdb.protocol.parts import ReadLobRequest
@@ -124,12 +125,15 @@ class Lob(object):
         """
         self.connection._check_closed()
 
-        response = self.connection.Message(
+        request = Message.new_request(
+            self.connection,
             RequestSegment(
                 message_types.READLOB,
                 (ReadLobRequest(self.lob_header.locator_id, readoffset, readlength),)
             )
         ).send()
+        response = self.connection.send_request(request)
+
         # The segment of the message contains two parts.
         # 1) StatementContext -> ignored for now
         # 2) ReadLobReply -> contains some header information and actual LOB data

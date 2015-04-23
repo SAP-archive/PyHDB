@@ -13,18 +13,20 @@
 # language governing permissions and limitations under the License.
 
 import pytest
+from pyhdb.protocol.message import Message
 from pyhdb.protocol.segments import RequestSegment
 from pyhdb.exceptions import DatabaseError
 
 
 @pytest.mark.hanatest
 def test_invalid_request(connection):
-    message = connection.Message(
+    request = Message.new_request(
+        connection,
         RequestSegment(2)
     )
 
     with pytest.raises(DatabaseError):
-        message.send()
+        connection.send_request(request)
 
 
 @pytest.mark.hanatest
