@@ -16,7 +16,7 @@
 
 import pytest
 
-from pyhdb.client import Connection
+from pyhdb.connection import Connection
 
 @pytest.mark.hanatest
 def test_initial_timeout(connection):

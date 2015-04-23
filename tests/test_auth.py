@@ -15,9 +15,10 @@
 import pytest
 
 from pyhdb.auth import AuthManager
-from pyhdb.protocol.base import RequestSegment, Part
+from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.constants import message_types, part_kinds
-from pyhdb.protocol.parts import Authentication
+from pyhdb.protocol.parts import Authentication, Part
+
 
 @pytest.fixture
 def auth_manager():

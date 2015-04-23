@@ -15,7 +15,7 @@
 import io
 import logging
 from headers import ReadLobHeader
-from pyhdb.protocol.base import RequestSegment
+from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.constants import message_types, type_codes
 from pyhdb.protocol.parts import ReadLobRequest
 

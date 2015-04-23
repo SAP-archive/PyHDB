@@ -15,9 +15,11 @@
 import pytest
 import mock
 from io import BytesIO
-
-from pyhdb.client import Connection
-from pyhdb.protocol.base import Message, RequestSegment, Part, part_mapping
+###
+from pyhdb.connection import Connection
+from pyhdb.protocol.segments import RequestSegment
+from pyhdb.protocol.parts import Part, PART_MAPPING
+from pyhdb.protocol.message import Message
 from pyhdb.exceptions import InterfaceError
 
 
@@ -68,7 +70,7 @@ class TestBaseMessage(object):
         connection.session_id = 5
         assert msg.session_id == connection.session_id
 
-    @mock.patch('pyhdb.client.Connection.get_next_packet_count',
+    @mock.patch('pyhdb.connection.Connection.get_next_packet_count',
                 return_value=0)
     def test_message_keep_packet_count(self, get_next_packet_count):
         connection = Connection("localhost", 30015, "Fuu", "Bar")
@@ -131,7 +133,7 @@ class TestReceivedMessage(object):
 
         assert msg.session_id == 12345
 
-    @mock.patch('pyhdb.client.Connection.get_next_packet_count',
+    @mock.patch('pyhdb.connection.Connection.get_next_packet_count',
                 return_value=0)
     def test_message_use_received_packet_count(self, get_next_packet_count):
         connection = Connection("localhost", 30015, "Fuu", "Bar")
@@ -237,17 +239,17 @@ class TestBasePart(object):
 class TestPartMetaClass(object):
 
     def test_part_kind_mapping(self):
-        assert 125 not in part_mapping
+        assert 125 not in PART_MAPPING
         class Part125(Part):
             kind = 125
-        assert part_mapping[125] == Part125
+        assert PART_MAPPING[125] == Part125
 
     def test_part_without_kind_attribute_will_be_not_in_mapping(self):
-        assert 123 not in part_mapping
+        assert 123 not in PART_MAPPING
         class Part123(Part):
             # No kind attribute
             pass
-        assert 123 not in part_mapping
+        assert 123 not in PART_MAPPING
 
     def test_part_kind_out_of_range_raises_exception(self):
         with pytest.raises(InterfaceError):
@@ -255,13 +257,13 @@ class TestPartMetaClass(object):
                 kind = 255
 
     def test_part_class_mapping_updates_after_class_left_scope(self):
-        assert 124 not in part_mapping
+        assert 124 not in PART_MAPPING
         class Part124(Part):
             kind = 124
-        assert part_mapping[124] == Part124
+        assert PART_MAPPING[124] == Part124
 
         del Part124
         import gc
         gc.collect()
 
-        assert 124 not in part_mapping
+        assert 124 not in PART_MAPPING

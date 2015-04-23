@@ -13,7 +13,7 @@
 # language governing permissions and limitations under the License.
 
 import pytest
-from pyhdb.client import Connection
+from pyhdb.connection import Connection
 
 def test_getautocommit():
     connection = Connection("localhost", 30015, "Fuu", "Bar")

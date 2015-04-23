@@ -18,14 +18,14 @@ import struct
 import threading
 import logging
 from io import BytesIO
-
+###
 from pyhdb.auth import AuthManager
 from pyhdb.cursor import Cursor
 from pyhdb.exceptions import Error, OperationalError, ConnectionTimedOutError
-from pyhdb.protocol.base import Message, RequestSegment
-from pyhdb.protocol.parts import Authentication, ClientId, ConnectOptions
-from pyhdb.protocol.constants import message_types, function_codes, \
-    DEFAULT_CONNECTION_OPTIONS
+from pyhdb.protocol.segments import RequestSegment
+from pyhdb.protocol.message import Message
+from pyhdb.protocol.parts import ClientId, ConnectOptions
+from pyhdb.protocol.constants import message_types, function_codes, DEFAULT_CONNECTION_OPTIONS
 
 INITIALIZATION_BYTES = bytearray([
     255, 255, 255, 255, 4, 20, 0, 4, 1, 0, 0, 1, 1, 1
@@ -37,9 +37,10 @@ version_struct = struct.Struct('<bH')
 
 
 class Connection(object):
-
-    def __init__(self, host, port, user, password, autocommit=False,
-                 timeout=None):
+    """
+    Database connection class
+    """
+    def __init__(self, host, port, user, password, autocommit=False, timeout=None):
         self.host = host
         self.port = port
 
@@ -137,7 +138,7 @@ class Connection(object):
             # with the agreed authentication data
             agreed_auth_part = self._auth_manager.perform_handshake()
 
-            reply = self.Message(
+            self.Message(
                 RequestSegment(
                     message_types.CONNECT,
                     (

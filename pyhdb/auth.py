@@ -17,14 +17,15 @@ import struct
 import hashlib
 import hmac
 from io import BytesIO
-
-from pyhdb.protocol.base import RequestSegment, Part
+###
+from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.constants import message_types
 from pyhdb.protocol.parts import Authentication, Fields
 from pyhdb.compat import iter_range
 
 CLIENT_PROOF_SIZE = 32
 CLIENT_KEY_SIZE = 64
+
 
 class AuthManager(object):
 
@@ -85,7 +86,8 @@ class AuthManager(object):
 
         return self._xor(sig, key)
 
-    def _xor(self, a, b):
+    @staticmethod
+    def _xor(a, b):
         a = bytearray(a)
         b = bytearray(b)
         result = bytearray(len(a))

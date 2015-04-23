@@ -12,21 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Enable absolute import, otherwise the 'string' module of stdlib will not be found (conflicts with pyhdb string.py)
+# Enable absolute import, otherwise the 'types' module of stdlib will not be found (conflicts with pyhdb types.py)
 from __future__ import absolute_import
 
 import io
 import struct
+import logging
+from io import BytesIO
 from types import StringTypes
 from collections import namedtuple
+from weakref import WeakValueDictionary
 ###
 import pyhdb.protocol.constants.part_kinds
 from pyhdb.protocol import types
 from pyhdb.protocol import constants
-from pyhdb.protocol.base import Part, PartMeta, MAX_MESSAGE_SIZE
 from pyhdb.exceptions import InterfaceError, DatabaseError, DataError
 from pyhdb.compat import is_text, iter_range, with_metaclass
 from pyhdb.protocol.headers import ReadLobHeader
+from pyhdb.protocol.constants.general import MAX_MESSAGE_SIZE
+
+recv_log = logging.getLogger('receive')
+debug = recv_log.debug
+
+PART_MAPPING = WeakValueDictionary()
 
 
 class Fields(object):
@@ -61,95 +69,88 @@ class Fields(object):
         return fields
 
 
-class OptionPartMeta(PartMeta):
-
+class PartMeta(type):
+    """
+    Meta class for part classes which also add them into PART_MAPPING.
+    """
     def __new__(mcs, name, bases, attrs):
-        part_class = super(OptionPartMeta, mcs).__new__(
-            mcs, name, bases, attrs
-        )
-        if hasattr(part_class, "option_definition"):
-            part_class.option_identifier = dict([
-                (i[1][0], i[0]) for i in part_class.option_definition.items()
-            ])
+        part_class = super(PartMeta, mcs).__new__(mcs, name, bases, attrs)
+        if part_class.kind:
+            if not -128 <= part_class.kind <= 127:
+                raise InterfaceError("%s part kind must be between -128 and 127" % part_class.__name__)
+            # Register new part class is registry dictionary for later lookup:
+            PART_MAPPING[part_class.kind] = part_class
         return part_class
 
 
-class OptionPart(with_metaclass(OptionPartMeta, Part)):
-    """
-    The multi-line option part format is a common format to
-    transmit collections of options (typed key-value pairs).
-    """
+class Part(with_metaclass(PartMeta, object)):
 
-    __metaclass__ = OptionPartMeta
+    header_struct = struct.Struct('<bbhiii')
+    attribute = 0
+    kind = None
+    bigargumentcount = 0  # what is this useful for? Seems to be always zero ...
 
-    def __init__(self, options):
-        self.options = options
+    # Attribute to get source of part
+    source = 'client'
+
+    def pack(self, remaining_size):
+        """Pack data of part into binary format"""
+        arguments_count, payload = self.pack_data()
+        payload_length = len(payload)
+
+        # align payload length to multiple of 8
+        if payload_length % 8 != 0:
+            payload += b"\x00" * (8 - payload_length % 8)
+
+        return self.header_struct.pack(self.kind, self.attribute, arguments_count, self.bigargumentcount,
+                                       payload_length, remaining_size) + payload
 
     def pack_data(self):
-        payload = b""
-        arguments = 0
-        for option, value in self.options.items():
-            try:
-                key, typ = self.option_definition[option]
-            except KeyError:
-                raise InterfaceError("Unknown option identifier %s" % option)
-
-            if value is None:
-                continue
-
-            if typ == 1:
-                value = struct.pack('B', value)
-            elif typ == 2:
-                value = struct.pack('h', value)
-            elif typ == 3:
-                value = struct.pack('i', value)
-            elif typ == 4:
-                value = struct.pack('l', value)
-            elif typ == 28:
-                value = struct.pack('?', value)
-            elif typ == 29 or typ == 30:
-                value = value.encode('utf-8')
-                value = struct.pack('h', len(value)) + value
-            else:
-                raise Exception("Unknown option type %s" % typ)
-
-            arguments += 1
-            payload += struct.pack('bb', key, typ) + value
-        return arguments, payload
+        raise NotImplemented()
 
     @classmethod
-    def unpack_data(cls, argument_count, payload):
-        options = {}
-        for _ in iter_range(argument_count):
-            key, typ = struct.unpack('bb', payload.read(2))
+    def unpack_from(cls, payload, expected_parts):
+        """Unpack parts from payload"""
+        num_parts = 0
 
-            if key not in cls.option_identifier:
-                key = 'Unknown_%d' % key
+        while expected_parts > num_parts:
+            try:
+                part_header = cls.header_struct.unpack(
+                    payload.read(16)
+                )
+            except struct.error:
+                raise InterfaceError("No valid part header")
+
+            if part_header[4] % 8 != 0:
+                part_payload_size = part_header[4] + 8 - (part_header[4] % 8)
             else:
-                key = cls.option_identifier[key]
+                part_payload_size = part_header[4]
+            part_payload = BytesIO(payload.read(part_payload_size))
 
-            if typ == 1:
-                value = struct.unpack('B', payload.read(1))[0]
-            elif typ == 2:
-                value = struct.unpack('h', payload.read(2))[0]
-            elif typ == 3:
-                value = struct.unpack('i', payload.read(4))[0]
-            elif typ == 4:
-                value = struct.unpack('l', payload.read(8))[0]
-            elif typ == 28:
-                value = struct.unpack('?', payload.read(1))[0]
-            elif typ == 29 or typ == 30:
-                length = struct.unpack('h', payload.read(2))[0]
-                value = payload.read(length).decode('utf-8')
-            elif typ == 24:
-                # TODO: Handle type 24
-                continue
-            else:
-                raise Exception("Unknown option type %s" % typ)
+            try:
+                _PartClass = PART_MAPPING[part_header[0]]
+            except KeyError:
+                raise InterfaceError(
+                    "Unknown part kind %s" % part_header[0]
+                )
 
-            options[key] = value
+            msg = 'Part Header (%d/%d, 16 bytes): partkind: %s(%d), ' \
+                  'partattributes: %d, argumentcount: %d, bigargumentcount: %d'\
+                  ', bufferlength: %d, buffersize: %d'
+            debug(msg, num_parts+1, expected_parts, _PartClass.__name__,
+                  *part_header[:6])
+            debug('Read %d bytes payload for part %d',
+                  part_payload_size, num_parts + 1)
+            init_arguments = _PartClass.unpack_data(
+                part_header[2], part_payload
+            )
+            debug('Part data: %s', init_arguments)
+            part = _PartClass(*init_arguments)
+            part.attribute = part_header[1]
+            part.source = 'server'
 
-        return (options,)
+            num_parts += 1
+            yield part
 
 
 class Command(Part):
@@ -260,7 +261,7 @@ class ResultSetId(Part):
     @classmethod
     def unpack_data(cls, argument_count, payload):
         value = payload.read()
-        return (value,)
+        return value,
 
 
 class TopologyInformation(Part):
@@ -299,12 +300,12 @@ class ReadLobReply(Part):
     part_struct_p1 = struct.Struct(b'<8sB')
     part_struct_p2 = struct.Struct(b'<I3s')
 
-    def __init__(self, data, isDataIncluded, isLastData, isNull):
+    def __init__(self, data, is_data_included, is_last_data, is_null):
         # print 'realobreply called with args', args
         self.data = data
-        self.isDataIncluded = isDataIncluded
-        self.isLastData = isLastData
-        self.isNull = isNull
+        self.is_data_included = is_data_included
+        self.is_last_data = is_last_data
+        self.is_null = is_null
 
     @classmethod
     def unpack_data(cls, argument_count, payload):
@@ -480,31 +481,6 @@ class StatementContext(Part):
         return tuple()
 
 
-class ConnectOptions(OptionPart):
-
-    kind = constants.part_kinds.CONNECTOPTIONS
-
-    option_definition = {
-        # Identifier, (Value, Type)
-        "connection_id": (1, 3),
-        "complete_array_execution": (2, 28),
-        "client_locale": (3, 29),
-        "supports_large_bulk_operations": (4, 28),
-        "large_number_of_parameters_support": (10, 28),
-        "system_id": (11, 29),
-        "data_format_version": (12, 3),
-        "select_for_update_supported": (14, 28),
-        "client_distribution_mode": (15, 3),
-        "engine_data_format_version": (16, 3),
-        "distribution_protocol_version": (17, 3),
-        "split_batch_commands": (18, 28),
-        "use_transaction_flags_only": (19, 28),
-        "row_and_column_optimized_format": (20, 28),
-        "ignore_unknown_parts": (21, 28),
-        "data_format_version2": (23, 3)
-    }
-
-
 class FetchSize(Part):
 
     kind = constants.part_kinds.FETCHSIZE
@@ -585,6 +561,122 @@ class ResultSetMetaData(Part):
 
         columns = tuple([tuple(x) for x in columns])
         return columns,
+
+
+class OptionPartMeta(PartMeta):
+
+    def __new__(mcs, name, bases, attrs):
+        part_class = super(OptionPartMeta, mcs).__new__(
+            mcs, name, bases, attrs
+        )
+        if hasattr(part_class, "option_definition"):
+            part_class.option_identifier = dict([
+                (i[1][0], i[0]) for i in part_class.option_definition.items()
+            ])
+        return part_class
+
+
+class OptionPart(with_metaclass(OptionPartMeta, Part)):
+    """
+    The multi-line option part format is a common format to
+    transmit collections of options (typed key-value pairs).
+    """
+
+    __metaclass__ = OptionPartMeta
+
+    def __init__(self, options):
+        self.options = options
+
+    def pack_data(self):
+        payload = b""
+        arguments = 0
+        for option, value in self.options.items():
+            try:
+                key, typ = self.option_definition[option]
+            except KeyError:
+                raise InterfaceError("Unknown option identifier %s" % option)
+
+            if value is None:
+                continue
+
+            if typ == 1:
+                value = struct.pack('B', value)
+            elif typ == 2:
+                value = struct.pack('h', value)
+            elif typ == 3:
+                value = struct.pack('i', value)
+            elif typ == 4:
+                value = struct.pack('l', value)
+            elif typ == 28:
+                value = struct.pack('?', value)
+            elif typ == 29 or typ == 30:
+                value = value.encode('utf-8')
+                value = struct.pack('h', len(value)) + value
+            else:
+                raise Exception("Unknown option type %s" % typ)
+
+            arguments += 1
+            payload += struct.pack('bb', key, typ) + value
+        return arguments, payload
+
+    @classmethod
+    def unpack_data(cls, argument_count, payload):
+        options = {}
+        for _ in iter_range(argument_count):
+            key, typ = struct.unpack('bb', payload.read(2))
+
+            if key not in cls.option_identifier:
+                key = 'Unknown_%d' % key
+            else:
+                key = cls.option_identifier[key]
+
+            if typ == 1:
+                value = struct.unpack('B', payload.read(1))[0]
+            elif typ == 2:
+                value = struct.unpack('h', payload.read(2))[0]
+            elif typ == 3:
+                value = struct.unpack('i', payload.read(4))[0]
+            elif typ == 4:
+                value = struct.unpack('l', payload.read(8))[0]
+            elif typ == 28:
+                value = struct.unpack('?', payload.read(1))[0]
+            elif typ == 29 or typ == 30:
+                length = struct.unpack('h', payload.read(2))[0]
+                value = payload.read(length).decode('utf-8')
+            elif typ == 24:
+                # TODO: Handle type 24
+                continue
+            else:
+                raise Exception("Unknown option type %s" % typ)
+
+            options[key] = value
+
+        return (options,)
+
+
+class ConnectOptions(OptionPart):
+
+    kind = constants.part_kinds.CONNECTOPTIONS
+
+    option_definition = {
+        # Identifier, (Value, Type)
+        "connection_id": (1, 3),
+        "complete_array_execution": (2, 28),
+        "client_locale": (3, 29),
+        "supports_large_bulk_operations": (4, 28),
+        "large_number_of_parameters_support": (10, 28),
+        "system_id": (11, 29),
+        "data_format_version": (12, 3),
+        "select_for_update_supported": (14, 28),
+        "client_distribution_mode": (15, 3),
+        "engine_data_format_version": (16, 3),
+        "distribution_protocol_version": (17, 3),
+        "split_batch_commands": (18, 28),
+        "use_transaction_flags_only": (19, 28),
+        "row_and_column_optimized_format": (20, 28),
+        "ignore_unknown_parts": (21, 28),
+        "data_format_version2": (23, 3)
+    }
 
 
 class TransactionFlags(OptionPart):

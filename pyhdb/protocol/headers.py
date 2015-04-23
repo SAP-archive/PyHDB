@@ -60,7 +60,7 @@ class ReadLobHeader(BaseLobheader):
 
     00: TYPE:    I1       Type of data
     01: OPTIONS: I1       Options that further refine the descriptor
-    -> no further data to be read for LOB if options->isNull is true
+    -> no further data to be read for LOB if options->is_null is true
     02: RESERVED: I2      (ignore this)
     04: CHARLENGTH: I8    Length of string (for asci and unicode)
     12: BYTELENGTH: I8    Number of bytes of LOB

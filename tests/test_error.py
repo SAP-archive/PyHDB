@@ -13,7 +13,7 @@
 # language governing permissions and limitations under the License.
 
 import pytest
-from pyhdb.protocol.base import RequestSegment
+from pyhdb.protocol.segments import RequestSegment
 from pyhdb.exceptions import ProgrammingError, DatabaseError
 
 @pytest.mark.hanatest
