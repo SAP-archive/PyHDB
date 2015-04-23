@@ -63,7 +63,7 @@ class BaseSegment(object):
     def pack(self, payload, **kwargs):
 
         # remember position in payload object:
-        payload_pos = payload.tell()
+        segment_payload_start_pos = payload.tell()
 
         # Advance num bytes equal to header size. The header is written later
         # after the payload of all segments and parts has been written:
@@ -71,7 +71,7 @@ class BaseSegment(object):
 
         # Write out payload of parts:
         self.build_payload(payload)
-        payload_length = payload.tell() - payload_pos  # calc length of parts payload
+        payload_length = payload.tell() - segment_payload_start_pos  # calc length of parts payload
 
         header = self.header_struct.pack(
             payload_length,
@@ -82,7 +82,7 @@ class BaseSegment(object):
         ) + self.pack_additional_header(**kwargs)
 
         # Go back to beginning of payload header for writing segment header:
-        payload.seek(payload_pos)
+        payload.seek(segment_payload_start_pos)
         payload.write(header)
         # Put file pointer at the end of the bffer so that next segment can be appended:
         payload.seek(0, io.SEEK_END)

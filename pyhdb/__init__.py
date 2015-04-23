@@ -28,6 +28,6 @@ paramstyle = "format"
 
 
 def connect(host, port, user, password, autocommit=False):
-    connection = Connection(host, port, user, password, autocommit)
-    connection.connect()
-    return connection
+    conn = Connection(host, port, user, password, autocommit)
+    conn.connect()
+    return conn
