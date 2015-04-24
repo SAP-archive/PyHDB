@@ -27,18 +27,11 @@ class BaseMessage(object):
     header_struct = struct.Struct('qiIIhb9s')  # I8 I4 UI4 UI4 I2 I1 s[9]
     header_size = header_struct.size
 
-    def __init__(self, session_id, packet_count, connection=None, segments=None, autocommit=False):
+    def __init__(self, session_id, packet_count, segments=(), autocommit=False):
         self.session_id = session_id
         self.packet_count = packet_count
-        self.connection = connection
         self.autocommit = autocommit
-
-        if segments is None:
-            self.segments = []
-        elif isinstance(segments, (list, tuple)):
-            self.segments = segments
-        else:
-            self.segments = [segments]
+        self.segments = segments
 
 
 class RequestMessage(BaseMessage):
@@ -77,13 +70,14 @@ class RequestMessage(BaseMessage):
         return payload
 
     @classmethod
-    def new(cls, connection, *args, **kwargs):
+    def new(cls, connection, *segments):
         """Return a new request message instance - extracts required data from connection object
         :param connection: connection object
         :args and kwargs: passed through to Message class constructor
         :returns: RequestMessage instance
         """
-        return cls(connection.session_id, connection.get_next_packet_count(), connection, *args, **kwargs)
+        return cls(connection.session_id, connection.get_next_packet_count(), segments,
+                   autocommit=connection.autocommit)
 
 
 class ReplyMessage(BaseMessage):

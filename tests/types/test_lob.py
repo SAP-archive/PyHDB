@@ -210,13 +210,13 @@ def test_read_lob(type_code, lob_header, bin_lob_data, lob_data):
     lob = lobs.from_payload(type_code, payload, None)
     _ExpectedLobClass = lobs.LOB_TYPE_CODE_MAP[type_code]
     assert isinstance(lob, _ExpectedLobClass)  # check for correct instance
-    assert lob.lob_header.lob_type in (0, lob.lob_header.LOB_TYPES[type_code])
-    assert lob.lob_header.options & lob.lob_header.LOB_OPTION_DATAINCLUDED
-    assert lob.lob_header.char_length == len(lob_data)
-    assert lob.lob_header.byte_length == len(bin_lob_data)
-    assert lob.lob_header.locator_id == lob_header[20:28]
-    # assert lob.lob_header.chunk_length == min(len(bin_lob_data), MAX_LOB_DATA_LENGTH) - chunklength can vary ...
-    assert lob.lob_header.total_lob_length == len(lob_data)
+    assert lob._lob_header.lob_type in (0, lob._lob_header.LOB_TYPES[type_code])
+    assert lob._lob_header.options & lob._lob_header.LOB_OPTION_DATAINCLUDED
+    assert lob._lob_header.char_length == len(lob_data)
+    assert lob._lob_header.byte_length == len(bin_lob_data)
+    assert lob._lob_header.locator_id == lob_header[20:28]
+    # assert lob._lob_header.chunk_length == min(len(bin_lob_data), MAX_LOB_DATA_LENGTH) - chunklength can vary ...
+    assert lob._lob_header.total_lob_length == len(lob_data)
     assert lob.data.getvalue() == lob_data[:1024]
 
 

@@ -30,6 +30,7 @@ SEEK_END = io.SEEK_END
 def from_payload(type_code, payload, connection):
     """Generator function to create lob from payload.
     Depending on lob type a BLOB, CLOB, or NCLOB instance will be returned.
+    This function is usually called from types.*LobType.from_resultset()
     """
     lob_header = ReadLobHeader(payload)
     if lob_header.isnull():
@@ -39,7 +40,7 @@ def from_payload(type_code, payload, connection):
         # print 'raw lob data: %r' % data
         _LobClass = LOB_TYPE_CODE_MAP[type_code]
         lob = _LobClass.from_payload(data, lob_header, connection)
-        recv_log.debug('Lob Header %s' % str(lob))
+        recv_log.debug('Lob Header %r' % lob)
     return lob
 
 
@@ -62,11 +63,11 @@ class Lob(object):
 
     def __init__(self, init_value='', lob_header=None, connection=None):
         self.data = self._init_io_container(init_value)
-        self.lob_header = lob_header
-        self.connection = connection
         self.data.seek(0)
+        self._lob_header = lob_header
+        self._connection = connection
         self._lob_length = len(self.data.getvalue())
-        # assert self._lob_length == self.lob_header.chunk_length  # just to be sure ;-)
+        # assert self._lob_length == self._lob_header.chunk_length  # just to be sure ;-)
 
     def _init_io_container(self, init_value):
         raise NotImplemented()
@@ -105,9 +106,9 @@ class Lob(object):
         reading is larger than what is currently buffered.
         """
         pos = self.tell()
-        num_items_to_read = n if n != -1 else self.lob_header.total_lob_length - pos
+        num_items_to_read = n if n != -1 else self._lob_header.total_lob_length - pos
         # calculate the position of the file pointer after data was read:
-        new_pos = min(pos + num_items_to_read, self.lob_header.total_lob_length)
+        new_pos = min(pos + num_items_to_read, self._lob_header.total_lob_length)
 
         if new_pos > self._lob_length:
             missing_num_items_to_read = new_pos - self._lob_length
@@ -135,16 +136,16 @@ class Lob(object):
         """Make low level request to HANA database (READLOBREQUEST).
         Compose request message with proper parameters and read lob data from second part object of reply.
         """
-        self.connection._check_closed()
+        self._connection._check_closed()
 
         request = RequestMessage.new(
-            self.connection,
+            self._connection,
             RequestSegment(
                 message_types.READLOB,
-                (ReadLobRequest(self.lob_header.locator_id, readoffset, readlength),)
+                (ReadLobRequest(self._lob_header.locator_id, readoffset, readlength),)
             )
         )
-        response = self.connection.send_request(request)
+        response = self._connection.send_request(request)
 
         # The segment of the message contains two parts.
         # 1) StatementContext -> ignored for now
@@ -158,7 +159,7 @@ class Lob(object):
         return self.data.getvalue()
 
     def __repr__(self):
-        return '<%s %s>' % (self.__class__.__name__, str(self.lob_header))
+        return '<%s %s>' % (self.__class__.__name__, str(self._lob_header))
 
     def __str__(self):
         """Convert lob into its string/unicode format"""
