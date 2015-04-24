@@ -40,7 +40,6 @@ def test_blob_from_bytestring():
     data = b'abc \x01 \x45 vv'
     blob = lobs.Blob(data)
     assert blob.getvalue() == data
-    assert str(blob) == data
 
 
 def test_blob_from_string():
@@ -71,14 +70,28 @@ def test_clob_from_ascii_string():
     clob = lobs.Clob(data)
     assert clob.getvalue() == data
     assert clob.encode() == data
-    assert str(clob) == data
 
 
 def test_clob_from_ascii_unicode():
+    """Feeding unicode string works as long as only contains ascii chars"""
     data = string.ascii_letters.decode('ascii')
     clob = lobs.Clob(data)
     assert clob.getvalue() == data
     assert clob.encode() == data
+
+
+def test_clob_from_nonascii_unicode_raises():
+    """Feeding unicode string with non-ascii chars should raise an exception"""
+    data = u'朱の子ましけ'
+    with pytest.raises(UnicodeEncodeError):
+        lobs.Clob(data)
+
+
+def test_clob_from_nonascii_string_raises():
+    data = u'朱の子ましけ'
+    utf8_data = data.encode('utf8')
+    with pytest.raises(UnicodeDecodeError):
+        lobs.Clob(utf8_data)
 
 
 def test_clob_from_string_io():
@@ -89,11 +102,19 @@ def test_clob_from_string_io():
     assert clob.data is text_io
 
 
-def test_clob_from_nonascii_string_raises():
-    data = u'朱の子ましけ'
-    utf8_data = data.encode('utf8')
-    with pytest.raises(UnicodeDecodeError):
-        lobs.Clob(utf8_data)
+def test_clob___str___method():
+    """Test that the magic __str__ method returns a proper string"""
+    data = string.ascii_letters
+    clob = lobs.Clob(data)
+    assert str(clob) == data
+
+
+def test_clob___unicode___method():
+    """Test that the magic __unicode__ method returns a proper unicode string"""
+    data = string.ascii_letters
+    clob = lobs.Clob(data)
+    assert type(unicode(clob)) == unicode
+    assert unicode(clob) == data.decode('ascii')
 
 
 # ### Testing NCLOBs
@@ -109,7 +130,6 @@ def test_nclob_from_ascii_string():
     nclob = lobs.NClob(data)
     assert nclob.getvalue() == data
     assert nclob.encode() == data
-    assert str(nclob) == data
 
 
 def test_nclob_from_utf8_string():
@@ -133,6 +153,38 @@ def test_nclob_from_string_io():
     nclob = lobs.NClob(text_io)
     assert nclob.getvalue() == data
     assert nclob.data is text_io
+
+
+def test_nclob___str___method_for_ascii_chars():
+    """Test that the magic __str__ method returns a proper string when only ascii chars are contained in the string"""
+    data = string.ascii_letters
+    nclob = lobs.NClob(data)
+    str_nclob = str(nclob)
+    assert type(str_nclob) == str
+    assert str_nclob == data
+
+
+def test_nclob__str___method_for_nonascii_chars_raises():
+    """Test that the magic __str__ method raise Unicode error for non-ascii chars"""
+    data = u'朱の子ましけ'
+    nclob = lobs.NClob(data)
+    with pytest.raises(UnicodeEncodeError):
+        str(nclob)
+
+
+def test_nclob___unicode___method_for_nonascii_chars():
+    """Test that the magic __unicode__ method returns a proper unicode string"""
+    data = u'朱の子ましけ'
+    nclob = lobs.NClob(data)
+    uni_nclob = unicode(nclob)
+    assert type(uni_nclob) == unicode
+    assert uni_nclob == data
+
+
+def test_nclob___repr___method():
+    data = u'朱の子ましけ'
+    nclob = lobs.NClob(data)
+    assert repr(nclob) == '<NClob length: %d>' % len(data)
 
 
 # #############################################################################################################
@@ -201,6 +253,24 @@ lob_params = pytest.mark.parametrize("type_code, lob_header, bin_lob_data, lob_d
 ])
 
 
+# ### Test of initializing and reading LOB instances (w/o db) #####################################
+
+@lob_params
+def test_lob_init_and_more(type_code, lob_header, bin_lob_data, lob_data):
+    _LobClass = lobs.LOB_TYPE_CODE_MAP[type_code]
+    lob = _LobClass(lob_data)
+    assert lob.type_code == type_code
+    assert lob.length == len(lob_data)
+    assert len(lob) == len(lob_data)
+    assert lob.read() == lob_data
+    assert lob.tell() == len(lob_data)
+    assert lob.read(5) == ''
+    # go back to begging of lob, and just read three chars:
+    assert lob.seek(0) == 0
+    assert lob.read(3) == lob_data[:3]
+    assert lob.tell() == 3
+
+
 # ### Test of reading of LOB data/parsing header ##################################################
 
 @lob_params
@@ -216,8 +286,12 @@ def test_read_lob(type_code, lob_header, bin_lob_data, lob_data):
     assert lob._lob_header.byte_length == len(bin_lob_data)
     assert lob._lob_header.locator_id == lob_header[20:28]
     # assert lob._lob_header.chunk_length == min(len(bin_lob_data), MAX_LOB_DATA_LENGTH) - chunklength can vary ...
-    assert lob._lob_header.total_lob_length == len(lob_data)
+    assert lob._lob_header.total_lob_length == lob.length == len(lob_data)
+    assert lob._current_lob_length == len(lob.data.getvalue())
     assert lob.data.getvalue() == lob_data[:1024]
+
+    assert repr(lob) == '<%s length: %d (currently loaded from hana: %d)>' % \
+        (_ExpectedLobClass.__name__, lob.length, lob._current_lob_length)
 
 
 @lob_params
@@ -245,18 +319,26 @@ def test_blob_io_functions(type_code, lob_header, bin_lob_data, lob_data):
 def test_blob_read_triggers_further_loading(_make_read_lob_request, type_code, lob_header, bin_lob_data, lob_data):
     """Test that reading beyond currently available data (> 1024 items) triggers a READLOB request"""
     return_value = lob_data[1024:1024 + 100]
-    _LobClass = lobs.LOB_TYPE_CODE_MAP[type_code]
-    enc_return_value = return_value.encode(_LobClass.encoding) if _LobClass.encoding else return_value
+    _ExpectedLobClass = lobs.LOB_TYPE_CODE_MAP[type_code]
+    enc_return_value = return_value.encode(_ExpectedLobClass.encoding) if _ExpectedLobClass.encoding else return_value
     _make_read_lob_request.return_value = enc_return_value
 
     payload = io.BytesIO(lob_header + bin_lob_data)
     lob = lobs.from_payload(type_code, payload, None)
     lob_len = len(lob.data.getvalue())
+    assert lob._current_lob_length == lob_len
+    assert repr(lob) == '<%s length: %d (currently loaded from hana: %d)>' % \
+        (_ExpectedLobClass.__name__, lob.length, lob._current_lob_length)
+
     lob.read(lob_len + 100)  # read 100 items (chars/bytes) more than available
 
     # Reading extra 100 items should have triggered _read_missing_lob_data_from_db():
     _make_read_lob_request.assert_called_once_with(1024, 100)
     assert lob.getvalue() == lob_data[:1024 + 100]
+    assert lob._current_lob_length == lob_len + 100
+
+    assert repr(lob) == '<%s length: %d (currently loaded from hana: %d)>' % \
+        (_ExpectedLobClass.__name__, lob.length, lob._current_lob_length)
 
 
 @mock.patch('pyhdb.protocol.lobs.Lob._make_read_lob_request')

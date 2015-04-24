@@ -66,8 +66,22 @@ class Lob(object):
         self.data.seek(0)
         self._lob_header = lob_header
         self._connection = connection
-        self._lob_length = len(self.data.getvalue())
-        # assert self._lob_length == self._lob_header.chunk_length  # just to be sure ;-)
+        self._current_lob_length = len(self.data.getvalue())
+
+    @property
+    def length(self):
+        """Return total length of a lob.
+        If a lob was received from the database the length denotes the final absolute length of the lob even if
+        not all data has yet been read from the database.
+        For a lob constructed from local data length represents the amount of data currently stored in it.
+        """
+        if self._lob_header:
+            return self._lob_header.total_lob_length
+        else:
+            return self._current_lob_length
+
+    def __len__(self):
+        return self.length
 
     def _init_io_container(self, init_value):
         raise NotImplemented()
@@ -83,7 +97,7 @@ class Lob(object):
         # A nice trick is to (ab)use BytesIO.seek() to go to the desired position for easier calculation.
         # This will not add any data to the buffer however - very convenient!
         new_pos = self.data.seek(offset, whence)
-        missing_bytes_to_read = new_pos - self._lob_length
+        missing_bytes_to_read = new_pos - self._current_lob_length
         if missing_bytes_to_read > 0:
             # Trying to seek beyond currently available LOB data, so need to load some more first.
 
@@ -106,13 +120,13 @@ class Lob(object):
         reading is larger than what is currently buffered.
         """
         pos = self.tell()
-        num_items_to_read = n if n != -1 else self._lob_header.total_lob_length - pos
+        num_items_to_read = n if n != -1 else self.length - pos
         # calculate the position of the file pointer after data was read:
-        new_pos = min(pos + num_items_to_read, self._lob_header.total_lob_length)
+        new_pos = min(pos + num_items_to_read, self.length)
 
-        if new_pos > self._lob_length:
-            missing_num_items_to_read = new_pos - self._lob_length
-            self._read_missing_lob_data_from_db(self._lob_length, missing_num_items_to_read)
+        if new_pos > self._current_lob_length:
+            missing_num_items_to_read = new_pos - self._current_lob_length
+            self._read_missing_lob_data_from_db(self._current_lob_length, missing_num_items_to_read)
         # reposition file pointer to original position as reading in IO buffer might have changed it
         self.seek(pos, SEEK_SET)
         return self.data.read(n)
@@ -130,7 +144,7 @@ class Lob(object):
         # import pdb;pdb.set_trace()
         self.data.seek(0, SEEK_END)
         self.data.write(enc_lob_data)
-        self._lob_length = len(self.data.getvalue())
+        self._current_lob_length = len(self.data.getvalue())
 
     def _make_read_lob_request(self, readoffset, readlength):
         """Make low level request to HANA database (READLOBREQUEST).
@@ -158,12 +172,16 @@ class Lob(object):
         """Return all currently available lob data (might be shorter than the one in the database)"""
         return self.data.getvalue()
 
-    def __repr__(self):
-        return '<%s %s>' % (self.__class__.__name__, str(self._lob_header))
-
     def __str__(self):
-        """Convert lob into its string/unicode format"""
-        return self.encode()
+        """Return string format - might fail for unicode data not representable as string"""
+        return self.data.getvalue()
+
+    def __repr__(self):
+        if self._lob_header:
+            return '<%s length: %d (currently loaded from hana: %d)>' % \
+                   (self.__class__.__name__, len(self), self._current_lob_length)
+        else:
+            return '<%s length: %d>' % (self.__class__.__name__, len(self))
 
     def encode(self):
         """Encode lob data into binary format"""
@@ -189,6 +207,7 @@ class _CharLob(Lob):
     def _init_io_container(self, init_value):
         if isinstance(init_value, io.StringIO):
             return init_value
+
         if isinstance(init_value, str):
             init_value = init_value.decode(self.encoding)
         return io.StringIO(init_value)
@@ -202,11 +221,27 @@ class Clob(_CharLob):
     type_code = type_codes.CLOB
     encoding = 'ascii'
 
+    def __unicode__(self):
+        """Convert lob into its unicode format"""
+        return self.data.getvalue().decode(self.encoding)
+
+    def _init_io_container(self, init_value):
+        """For CLobs ensure that an initial unicode value only contains valid ascii chars.
+        This test will will raise a UnicodeEncodeError if not.
+        """
+        if isinstance(init_value, unicode):
+            init_value.encode('ascii')
+        return super(Clob, self)._init_io_container(init_value)
+
 
 class NClob(_CharLob):
     """Instance of this class will be returned for a NCLOB object in a db result"""
     type_code = type_codes.NCLOB
     encoding = 'utf8'
+
+    def __unicode__(self):
+        """Convert lob into its unicode format"""
+        return self.data.getvalue()
 
 
 LOB_TYPE_CODE_MAP = {

@@ -73,7 +73,7 @@ class RequestMessage(BaseMessage):
     def new(cls, connection, *segments):
         """Return a new request message instance - extracts required data from connection object
         :param connection: connection object
-        :args and kwargs: passed through to Message class constructor
+        :param segments: zero, one, or more segment instances
         :returns: RequestMessage instance
         """
         return cls(connection.session_id, connection.get_next_packet_count(), segments,
