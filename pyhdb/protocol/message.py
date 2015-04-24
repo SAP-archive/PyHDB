@@ -31,7 +31,7 @@ class BaseMessage(object):
         self.session_id = session_id
         self.packet_count = packet_count
         self.autocommit = autocommit
-        self.segments = segments
+        self.segments = segments if isinstance(segments, (list, tuple)) else (segments, )
 
 
 class RequestMessage(BaseMessage):
@@ -70,10 +70,10 @@ class RequestMessage(BaseMessage):
         return payload
 
     @classmethod
-    def new(cls, connection, *segments):
+    def new(cls, connection, segments=()):
         """Return a new request message instance - extracts required data from connection object
         :param connection: connection object
-        :param segments: zero, one, or more segment instances
+        :param segments: a single segment instance, or a list/tuple of segment instances
         :returns: RequestMessage instance
         """
         return cls(connection.session_id, connection.get_next_packet_count(), segments,
