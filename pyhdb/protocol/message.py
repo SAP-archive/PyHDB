@@ -16,18 +16,16 @@ import io
 import struct
 ###
 from pyhdb.protocol.constants.general import MAX_MESSAGE_SIZE
+from pyhdb.protocol.headers import MessageHeader
 from pyhdb.protocol.segments import ReplySegment
 
 
-class Message(object):
+class BaseMessage(object):
     """
     Message - basic frame for sending to and receiving data from HANA db.
     """
     header_struct = struct.Struct('qiIIhb9s')  # I8 I4 UI4 UI4 I2 I1 s[9]
     header_size = header_struct.size
-
-    _session_id = None
-    _packet_count = None
 
     def __init__(self, session_id, packet_count, connection=None, segments=None, autocommit=False):
         self.session_id = session_id
@@ -42,6 +40,8 @@ class Message(object):
         else:
             self.segments = [segments]
 
+
+class RequestMessage(BaseMessage):
     def build_payload(self, payload):
         """ Build payload of message. """
         for segment in self.segments:
@@ -76,12 +76,17 @@ class Message(object):
         payload.seek(0, io.SEEK_END)
         return payload
 
-    # ### Factory functions:
-
     @classmethod
-    def new_request(cls, connection, *args, **kwargs):
-        """Return a new request message instance"""
+    def new(cls, connection, *args, **kwargs):
+        """Return a new request message instance - extracts required data from connection object
+        :param connection: connection object
+        :args and kwargs: passed through to Message class constructor
+        :returns: RequestMessage instance
+        """
         return cls(connection.session_id, connection.get_next_packet_count(), connection, *args, **kwargs)
+
+
+class ReplyMessage(BaseMessage):
 
     @classmethod
     def unpack_reply(cls, connection, header, payload):
@@ -93,3 +98,17 @@ class Message(object):
             segments=tuple(ReplySegment.unpack_from(payload, expected_segments=header.num_segments))
         )
         return reply
+
+    # Helper methods
+
+    @classmethod
+    def header_from_raw_header_data(cls, raw_header):
+        """Unpack binary message header data obtained as a reply from HANA
+        :param raw_header: binary string containing message header data
+        :returns: named tuple for easy access of header data
+        """
+        try:
+            header = MessageHeader(*cls.header_struct.unpack(raw_header))
+        except struct.error:
+            raise Exception("Invalid message header received")
+        return header

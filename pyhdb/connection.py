@@ -12,19 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import io
 import os
 import socket
 import struct
 import threading
 import logging
-from io import BytesIO
 ###
 from pyhdb.auth import AuthManager
 from pyhdb.cursor import Cursor
 from pyhdb.exceptions import Error, OperationalError, ConnectionTimedOutError
 from pyhdb.protocol.segments import RequestSegment
-from pyhdb.protocol.headers import MessageHeader
-from pyhdb.protocol.message import Message
+from pyhdb.protocol.message import RequestMessage, ReplyMessage
 from pyhdb.protocol.parts import ClientId, ConnectOptions
 from pyhdb.protocol.constants import message_types, function_codes, DEFAULT_CONNECTION_OPTIONS
 
@@ -73,40 +72,40 @@ class Connection(object):
         self.protocol_version = version_struct.unpack_from(response[3:8])
 
     def send_request(self, message):
-        payload = message.pack()
-        return self.__send_message(payload.getvalue())
+        """Send message request to HANA db and return reply message
+        :param message: Instance of Message object containing segments and parts of a HANA db request
+        :returns: Instance of reply Message object
+        """
+        payload = message.pack()  # obtain BytesIO instance
+        return self.__send_message_recv_reply(payload.getvalue())
 
-    def __send_message(self, packed_message):
+    def __send_message_recv_reply(self, packed_message):
         """
-        Private method to send packed message and receive
-        the reply message.
+        Private method to send packed message and receive the reply message.
+        :param packed_message: a binary string containing the entire message payload
         """
+        payload = io.BytesIO()
         try:
             with self._socket_lock:
                 self._socket.sendall(packed_message)
 
                 # Read first message header
                 raw_header = self._socket.recv(32)
-                try:
-                    header = MessageHeader(*Message.header_struct.unpack(raw_header))
-                except struct.error:
-                    raise Exception("Invalid message header received")
+                header = ReplyMessage.header_from_raw_header_data(raw_header)
+
+                # from pyhdb.lib.stringlib import allhexlify
+                # print 'Raw msg header:', allhexlify(raw_header)
+                msg = 'Message header (32 bytes): sessionid: %d, packetcount: %d, length: %d, size: %d, noofsegm: %d'
+                debug(msg, *(header[:5]))
 
                 # Receive complete message payload
-                payload = b""
-                received = 0
-                msg = 'Message header (32 bytes): sessionid: %d, ' \
-                      'packetcount: %d, length: %d, size: %d, noofsegm: %d'
-                debug(msg, *(header[:5]))
-                while received < header.payload_length:
-                    _payload = self._socket.recv(header.payload_length - received)
+                while payload.tell() < header.payload_length:
+                    _payload = self._socket.recv(header.payload_length - payload.tell())
                     if not _payload:
-                        break
-                    payload += _payload
-                    received += len(_payload)
+                        break   # jump out without any warning??
+                    payload.write(_payload)
 
-                debug('Read %d bytes payload from socket', received)
-                payload = BytesIO(payload)
+                debug('Read %d bytes payload from socket', payload.tell())
 
                 # Keep session id of connection up to date
                 if self.session_id != header.session_id:
@@ -117,7 +116,8 @@ class Connection(object):
         except (IOError, OSError) as error:
             raise OperationalError("Lost connection to HANA server (%r)" % error)
 
-        return Message.unpack_reply(self, header, payload)
+        payload.seek(0)  # set pointer position to beginning of buffer
+        return ReplyMessage.unpack_reply(self, header, payload)
 
     def get_next_packet_count(self):
         with self._packet_count_lock:
@@ -136,7 +136,7 @@ class Connection(object):
             # with the agreed authentication data
             agreed_auth_part = self._auth_manager.perform_handshake()
 
-            request = Message.new_request(
+            request = RequestMessage.new(
                 self,
                 RequestSegment(
                     message_types.CONNECT,
@@ -157,7 +157,7 @@ class Connection(object):
                 raise Error("Connection already closed")
 
             try:
-                request = Message.new_request(
+                request = RequestMessage.new(
                     self,
                     RequestSegment(message_types.DISCONNECT)
                 )
@@ -186,7 +186,7 @@ class Connection(object):
     def commit(self):
         self._check_closed()
 
-        request = Message.new_request(
+        request = RequestMessage.new(
             self,
             RequestSegment(message_types.COMMIT)
         )
@@ -195,7 +195,7 @@ class Connection(object):
     def rollback(self):
         self._check_closed()
 
-        request = Message.new_request(
+        request = RequestMessage.new(
             self,
             RequestSegment(message_types.ROLLBACK)
         )

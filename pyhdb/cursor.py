@@ -13,8 +13,7 @@
 # limitations under the License.
 
 import collections
-from pyhdb.protocol.message import Message
-
+from pyhdb.protocol.message import RequestMessage
 from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.types import escape_values, by_type_code
 from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, Parameters
@@ -135,7 +134,7 @@ class Cursor(object):
         """
         self._check_closed()
 
-        request = Message.new_request(
+        request = RequestMessage.new(
             self.connection,
             RequestSegment(
                 message_types.PREPARE,
@@ -173,7 +172,7 @@ class Cursor(object):
         parameters = prepared_statement.prepare_parameters(multi_row_parameters)
 
         while parameters:
-            request = Message.new_request(
+            request = RequestMessage.new(
                 self.connection,
                 RequestSegment(
                     message_types.EXECUTE,
@@ -200,7 +199,7 @@ class Cursor(object):
         Either their have no parameters, or Python's string expansion has been applied to the SQL statement.
         :param operation:
         """
-        request = Message.new_request(
+        request = RequestMessage.new(
             self.connection,
             RequestSegment(
                 message_types.EXECUTEDIRECT,
@@ -370,7 +369,7 @@ class Cursor(object):
             # No rows are missing or there are no additional rows
             return _result
 
-        request = Message.new_request(
+        request = RequestMessage.new(
             self.connection,
             RequestSegment(
                 message_types.FETCHNEXT,

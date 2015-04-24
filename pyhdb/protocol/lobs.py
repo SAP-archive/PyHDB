@@ -15,7 +15,7 @@
 import io
 import logging
 from headers import ReadLobHeader
-from pyhdb.protocol.message import Message
+from pyhdb.protocol.message import RequestMessage
 from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.constants import message_types, type_codes
 from pyhdb.protocol.parts import ReadLobRequest
@@ -48,11 +48,17 @@ class Lob(object):
 
     EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK = 1024
     type_code = None
+    encoding = None
     _IO_Class = None
 
     @classmethod
-    def from_payload(cls, lob_header, payload_data, connection):
-        raise NotImplemented()
+    def from_payload(cls, payload_data, lob_header, connection):
+        enc_payload_data = cls._decode_lob_data(payload_data)
+        return cls(enc_payload_data, lob_header, connection)
+
+    @classmethod
+    def _decode_lob_data(cls, payload_data):
+        return payload_data.decode(cls.encoding) if cls.encoding else payload_data
 
     def __init__(self, init_value='', lob_header=None, connection=None):
         self.data = self._init_io_container(init_value)
@@ -84,8 +90,10 @@ class Lob(object):
             #         If a user sets a certain file position s/he probably wants to read data from
             #         there. So already read some extra data to avoid yet another immediate
             #         reading step. Try with EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK additional items (bytes/chars).
-            self._read_missing_lob_data_from_db(self._lob_length,
-                                                missing_bytes_to_read + self.EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK)
+
+            # jump to the end of the current buffer and read the new data:
+            self.data.seek(0, SEEK_END)
+            self.read(missing_bytes_to_read + self.EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK)
             # reposition file pointer a originally desired position:
             self.data.seek(new_pos)
         return new_pos
@@ -110,13 +118,17 @@ class Lob(object):
 
     def _read_missing_lob_data_from_db(self, readoffset, readlength):
         """Read LOB request part from database"""
+        recv_log.debug('Reading missing lob data from db. Offset: %d, readlength: %d' % (readoffset, readlength))
         lob_data = self._make_read_lob_request(readoffset, readlength)
-        # make sure we really got as many bytes as requested:
-        assert readlength == len(lob_data)
 
-        # jump to end of data, and append new to it:
+        # make sure we really got as many items (not bytes!) as requested:
+        enc_lob_data = self._decode_lob_data(lob_data)
+        assert readlength == len(enc_lob_data), 'expected: %d, received; %d' % (readlength, len(enc_lob_data))
+
+        # jump to end of data, and append new and properly decoded data to it:
+        # import pdb;pdb.set_trace()
         self.data.seek(0, SEEK_END)
-        self.data.write(lob_data)
+        self.data.write(enc_lob_data)
         self._lob_length = len(self.data.getvalue())
 
     def _make_read_lob_request(self, readoffset, readlength):
@@ -125,13 +137,13 @@ class Lob(object):
         """
         self.connection._check_closed()
 
-        request = Message.new_request(
+        request = RequestMessage.new(
             self.connection,
             RequestSegment(
                 message_types.READLOB,
                 (ReadLobRequest(self.lob_header.locator_id, readoffset, readlength),)
             )
-        ).send()
+        )
         response = self.connection.send_request(request)
 
         # The segment of the message contains two parts.
@@ -161,10 +173,6 @@ class Blob(Lob):
     """Instance of this class will be returned for a BLOB object in a db result"""
     type_code = type_codes.BLOB
 
-    @classmethod
-    def from_payload(cls, payload_data, lob_header, connection):
-        return cls(payload_data, lob_header, connection)
-
     def _init_io_container(self, init_value):
         if isinstance(init_value, io.BytesIO):
             return init_value
@@ -176,11 +184,6 @@ class Blob(Lob):
 
 class _CharLob(Lob):
     encoding = None
-
-    @classmethod
-    def from_payload(cls, payload_data, lob_header, connection):
-        unicode_value = payload_data.decode(cls.encoding)
-        return cls(unicode_value, lob_header, connection)
 
     def _init_io_container(self, init_value):
         if isinstance(init_value, io.StringIO):
