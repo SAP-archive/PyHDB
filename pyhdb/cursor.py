@@ -13,8 +13,8 @@
 # limitations under the License.
 
 import collections
-
-from pyhdb.protocol.base import RequestSegment
+from pyhdb.protocol.message import RequestMessage
+from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.types import escape_values, by_type_code
 from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, Parameters
 from pyhdb.protocol.constants import message_types, function_codes, part_kinds
@@ -109,7 +109,7 @@ class PreparedStatement(object):
 class Cursor(object):
     """Database cursor class"""
     def __init__(self, connection):
-        self._connection = connection
+        self.connection = connection
         self._buffer = collections.deque()
         self._received_last_resultset_part = False
         self._executed = None
@@ -134,12 +134,14 @@ class Cursor(object):
         """
         self._check_closed()
 
-        response = self._connection.Message(
+        request = RequestMessage.new(
+            self.connection,
             RequestSegment(
                 message_types.PREPARE,
                 Command(statement)
             )
-        ).send()
+        )
+        response = self.connection.send_request(request)
 
         statement_id = params_metadata = result_metadata_part = None
 
@@ -155,7 +157,7 @@ class Cursor(object):
         assert statement_id is not None
         assert params_metadata is not None
         # cache statement:
-        self._prepared_statements[statement_id] = PreparedStatement(self._connection, statement_id,
+        self._prepared_statements[statement_id] = PreparedStatement(self.connection, statement_id,
                                                                     params_metadata, result_metadata_part)
         return statement_id
 
@@ -170,13 +172,15 @@ class Cursor(object):
         parameters = prepared_statement.prepare_parameters(multi_row_parameters)
 
         while parameters:
-            response = self._connection.Message(
+            request = RequestMessage.new(
+                self.connection,
                 RequestSegment(
                     message_types.EXECUTE,
                     (StatementId(prepared_statement.statement_id),
                      Parameters(parameters))
                 )
-            ).send()
+            )
+            response = self.connection.send_request(request)
 
             parts = response.segments[0].parts
             function_code = response.segments[0].function_code
@@ -195,12 +199,14 @@ class Cursor(object):
         Either their have no parameters, or Python's string expansion has been applied to the SQL statement.
         :param operation:
         """
-        response = self._connection.Message(
+        request = RequestMessage.new(
+            self.connection,
             RequestSegment(
                 message_types.EXECUTEDIRECT,
                 Command(operation)
             )
-        ).send()
+        )
+        response = self.connection.send_request(request)
 
         parts = response.segments[0].parts
         function_code = response.segments[0].function_code
@@ -343,7 +349,7 @@ class Cursor(object):
 
     def _unpack_rows(self, payload, rows):
         for _ in iter_range(rows):
-            yield tuple(typ.from_resultset(payload, self._connection) for typ in self._column_types)
+            yield tuple(typ.from_resultset(payload, self.connection) for typ in self._column_types)
 
     def fetchmany(self, size=None):
         self._check_closed()
@@ -363,12 +369,14 @@ class Cursor(object):
             # No rows are missing or there are no additional rows
             return _result
 
-        response = self._connection.Message(
+        request = RequestMessage.new(
+            self.connection,
             RequestSegment(
                 message_types.FETCHNEXT,
                 (ResultSetId(self._resultset_id), FetchSize(_missing))
             )
-        ).send()
+        )
+        response = self.connection.send_request(request)
 
         if response.segments[0].parts[1].attribute & 1:
             self._received_last_resultset_part = True
@@ -391,8 +399,8 @@ class Cursor(object):
         return result
 
     def close(self):
-        self._connection = None
+        self.connection = None
 
     def _check_closed(self):
-        if self._connection is None or self._connection.closed:
+        if self.connection is None or self.connection.closed:
             raise ProgrammingError("Cursor closed")

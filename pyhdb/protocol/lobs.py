@@ -15,7 +15,8 @@
 import io
 import logging
 from headers import ReadLobHeader
-from pyhdb.protocol.base import RequestSegment
+from pyhdb.protocol.message import RequestMessage
+from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.constants import message_types, type_codes
 from pyhdb.protocol.parts import ReadLobRequest
 
@@ -29,6 +30,7 @@ SEEK_END = io.SEEK_END
 def from_payload(type_code, payload, connection):
     """Generator function to create lob from payload.
     Depending on lob type a BLOB, CLOB, or NCLOB instance will be returned.
+    This function is usually called from types.*LobType.from_resultset()
     """
     lob_header = ReadLobHeader(payload)
     if lob_header.isnull():
@@ -38,7 +40,7 @@ def from_payload(type_code, payload, connection):
         # print 'raw lob data: %r' % data
         _LobClass = LOB_TYPE_CODE_MAP[type_code]
         lob = _LobClass.from_payload(data, lob_header, connection)
-        recv_log.debug('Lob Header %s' % str(lob))
+        recv_log.debug('Lob Header %r' % lob)
     return lob
 
 
@@ -47,19 +49,39 @@ class Lob(object):
 
     EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK = 1024
     type_code = None
+    encoding = None
     _IO_Class = None
 
     @classmethod
-    def from_payload(cls, lob_header, payload_data, connection):
-        raise NotImplemented()
+    def from_payload(cls, payload_data, lob_header, connection):
+        enc_payload_data = cls._decode_lob_data(payload_data)
+        return cls(enc_payload_data, lob_header, connection)
+
+    @classmethod
+    def _decode_lob_data(cls, payload_data):
+        return payload_data.decode(cls.encoding) if cls.encoding else payload_data
 
     def __init__(self, init_value='', lob_header=None, connection=None):
         self.data = self._init_io_container(init_value)
-        self.lob_header = lob_header
-        self.connection = connection
         self.data.seek(0)
-        self._lob_length = len(self.data.getvalue())
-        # assert self._lob_length == self.lob_header.chunk_length  # just to be sure ;-)
+        self._lob_header = lob_header
+        self._connection = connection
+        self._current_lob_length = len(self.data.getvalue())
+
+    @property
+    def length(self):
+        """Return total length of a lob.
+        If a lob was received from the database the length denotes the final absolute length of the lob even if
+        not all data has yet been read from the database.
+        For a lob constructed from local data length represents the amount of data currently stored in it.
+        """
+        if self._lob_header:
+            return self._lob_header.total_lob_length
+        else:
+            return self._current_lob_length
+
+    def __len__(self):
+        return self.length
 
     def _init_io_container(self, init_value):
         raise NotImplemented()
@@ -75,7 +97,7 @@ class Lob(object):
         # A nice trick is to (ab)use BytesIO.seek() to go to the desired position for easier calculation.
         # This will not add any data to the buffer however - very convenient!
         new_pos = self.data.seek(offset, whence)
-        missing_bytes_to_read = new_pos - self._lob_length
+        missing_bytes_to_read = new_pos - self._current_lob_length
         if missing_bytes_to_read > 0:
             # Trying to seek beyond currently available LOB data, so need to load some more first.
 
@@ -83,8 +105,10 @@ class Lob(object):
             #         If a user sets a certain file position s/he probably wants to read data from
             #         there. So already read some extra data to avoid yet another immediate
             #         reading step. Try with EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK additional items (bytes/chars).
-            self._read_missing_lob_data_from_db(self._lob_length,
-                                                missing_bytes_to_read + self.EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK)
+
+            # jump to the end of the current buffer and read the new data:
+            self.data.seek(0, SEEK_END)
+            self.read(missing_bytes_to_read + self.EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK)
             # reposition file pointer a originally desired position:
             self.data.seek(new_pos)
         return new_pos
@@ -96,40 +120,47 @@ class Lob(object):
         reading is larger than what is currently buffered.
         """
         pos = self.tell()
-        num_items_to_read = n if n != -1 else self.lob_header.total_lob_length - pos
+        num_items_to_read = n if n != -1 else self.length - pos
         # calculate the position of the file pointer after data was read:
-        new_pos = min(pos + num_items_to_read, self.lob_header.total_lob_length)
+        new_pos = min(pos + num_items_to_read, self.length)
 
-        if new_pos > self._lob_length:
-            missing_num_items_to_read = new_pos - self._lob_length
-            self._read_missing_lob_data_from_db(self._lob_length, missing_num_items_to_read)
+        if new_pos > self._current_lob_length:
+            missing_num_items_to_read = new_pos - self._current_lob_length
+            self._read_missing_lob_data_from_db(self._current_lob_length, missing_num_items_to_read)
         # reposition file pointer to original position as reading in IO buffer might have changed it
         self.seek(pos, SEEK_SET)
         return self.data.read(n)
 
     def _read_missing_lob_data_from_db(self, readoffset, readlength):
         """Read LOB request part from database"""
+        recv_log.debug('Reading missing lob data from db. Offset: %d, readlength: %d' % (readoffset, readlength))
         lob_data = self._make_read_lob_request(readoffset, readlength)
-        # make sure we really got as many bytes as requested:
-        assert readlength == len(lob_data)
 
-        # jump to end of data, and append new to it:
+        # make sure we really got as many items (not bytes!) as requested:
+        enc_lob_data = self._decode_lob_data(lob_data)
+        assert readlength == len(enc_lob_data), 'expected: %d, received; %d' % (readlength, len(enc_lob_data))
+
+        # jump to end of data, and append new and properly decoded data to it:
+        # import pdb;pdb.set_trace()
         self.data.seek(0, SEEK_END)
-        self.data.write(lob_data)
-        self._lob_length = len(self.data.getvalue())
+        self.data.write(enc_lob_data)
+        self._current_lob_length = len(self.data.getvalue())
 
     def _make_read_lob_request(self, readoffset, readlength):
         """Make low level request to HANA database (READLOBREQUEST).
         Compose request message with proper parameters and read lob data from second part object of reply.
         """
-        self.connection._check_closed()
+        self._connection._check_closed()
 
-        response = self.connection.Message(
+        request = RequestMessage.new(
+            self._connection,
             RequestSegment(
                 message_types.READLOB,
-                (ReadLobRequest(self.lob_header.locator_id, readoffset, readlength),)
+                (ReadLobRequest(self._lob_header.locator_id, readoffset, readlength),)
             )
-        ).send()
+        )
+        response = self._connection.send_request(request)
+
         # The segment of the message contains two parts.
         # 1) StatementContext -> ignored for now
         # 2) ReadLobReply -> contains some header information and actual LOB data
@@ -141,12 +172,16 @@ class Lob(object):
         """Return all currently available lob data (might be shorter than the one in the database)"""
         return self.data.getvalue()
 
-    def __repr__(self):
-        return '<%s %s>' % (self.__class__.__name__, str(self.lob_header))
-
     def __str__(self):
-        """Convert lob into its string/unicode format"""
-        return self.encode()
+        """Return string format - might fail for unicode data not representable as string"""
+        return self.data.getvalue()
+
+    def __repr__(self):
+        if self._lob_header:
+            return '<%s length: %d (currently loaded from hana: %d)>' % \
+                   (self.__class__.__name__, len(self), self._current_lob_length)
+        else:
+            return '<%s length: %d>' % (self.__class__.__name__, len(self))
 
     def encode(self):
         """Encode lob data into binary format"""
@@ -156,10 +191,6 @@ class Lob(object):
 class Blob(Lob):
     """Instance of this class will be returned for a BLOB object in a db result"""
     type_code = type_codes.BLOB
-
-    @classmethod
-    def from_payload(cls, payload_data, lob_header, connection):
-        return cls(payload_data, lob_header, connection)
 
     def _init_io_container(self, init_value):
         if isinstance(init_value, io.BytesIO):
@@ -173,14 +204,10 @@ class Blob(Lob):
 class _CharLob(Lob):
     encoding = None
 
-    @classmethod
-    def from_payload(cls, payload_data, lob_header, connection):
-        unicode_value = payload_data.decode(cls.encoding)
-        return cls(unicode_value, lob_header, connection)
-
     def _init_io_container(self, init_value):
         if isinstance(init_value, io.StringIO):
             return init_value
+
         if isinstance(init_value, str):
             init_value = init_value.decode(self.encoding)
         return io.StringIO(init_value)
@@ -194,11 +221,27 @@ class Clob(_CharLob):
     type_code = type_codes.CLOB
     encoding = 'ascii'
 
+    def __unicode__(self):
+        """Convert lob into its unicode format"""
+        return self.data.getvalue().decode(self.encoding)
+
+    def _init_io_container(self, init_value):
+        """For CLobs ensure that an initial unicode value only contains valid ascii chars.
+        This test will will raise a UnicodeEncodeError if not.
+        """
+        if isinstance(init_value, unicode):
+            init_value.encode('ascii')
+        return super(Clob, self)._init_io_container(init_value)
+
 
 class NClob(_CharLob):
     """Instance of this class will be returned for a NCLOB object in a db result"""
     type_code = type_codes.NCLOB
     encoding = 'utf8'
+
+    def __unicode__(self):
+        """Convert lob into its unicode format"""
+        return self.data.getvalue()
 
 
 LOB_TYPE_CODE_MAP = {

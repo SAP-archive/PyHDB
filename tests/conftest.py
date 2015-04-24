@@ -21,8 +21,10 @@ HANASystem = namedtuple(
     'HANASystem', ['host', 'port', 'user', 'password']
 )
 
+
 def _get_option(config, key):
     return config.getoption(key) or config.inicfg.get(key)
+
 
 @pytest.fixture(scope="session")
 def hana_system():
@@ -31,6 +33,7 @@ def hana_system():
     user = _get_option(pytest.config, 'hana_user')
     password = _get_option(pytest.config, 'hana_password')
     return HANASystem(host, port, user, password)
+
 
 @pytest.fixture()
 def connection(request, hana_system):
@@ -42,11 +45,13 @@ def connection(request, hana_system):
     request.addfinalizer(_close)
     return connection
 
+
 def pytest_configure(config):
     config.addinivalue_line(
         "markers",
         "hanatest: mark test to run only with SAP HANA system"
     )
+
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -65,6 +70,12 @@ def pytest_addoption(parser):
         "--hana-password",
         help="Password for SAP HANA user"
     )
+    parser.addoption(
+        "--no-hana",
+        action="store_true",
+        help="Specify this option to omit all tests interacting with a HANA database"
+    )
+
 
 def pytest_report_header(config):
     hana = hana_system()
@@ -79,10 +90,14 @@ def pytest_report_header(config):
             "  User: %s" % hana.user
         ]
 
+
 def pytest_runtest_setup(item):
     hana_marker = item.get_marker("hanatest")
 
     if hana_marker is not None:
-        hana = hana_system()
-        if hana.host is None:
-            pytest.skip("Test requires SAP HANA system")
+        if item.config.getoption("--no-hana"):
+            pytest.skip("Test requires SAP HANA system are omitted due to command line option")
+        else:
+            hana = hana_system()
+            if hana.host is None:
+                pytest.skip("Test requires SAP HANA system")

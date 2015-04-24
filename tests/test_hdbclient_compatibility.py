@@ -13,7 +13,8 @@
 # language governing permissions and limitations under the License.
 
 import pytest
-from pyhdb.client import Connection
+from pyhdb.connection import Connection
+
 
 def test_getautocommit():
     connection = Connection("localhost", 30015, "Fuu", "Bar")
@@ -21,6 +22,7 @@ def test_getautocommit():
 
     connection.autocommit = True
     assert connection.getautocommit()
+
 
 def test_setautocommit():
     connection = Connection("localhost", 30015, "Fuu", "Bar")
@@ -30,6 +32,7 @@ def test_setautocommit():
 
     connection.setautocommit(True)
     assert connection.autocommit
+
 
 @pytest.mark.hanatest
 def test_isconnected(hana_system):

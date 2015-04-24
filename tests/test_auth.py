@@ -15,9 +15,7 @@
 import pytest
 
 from pyhdb.auth import AuthManager
-from pyhdb.protocol.base import RequestSegment, Part
-from pyhdb.protocol.constants import message_types, part_kinds
-from pyhdb.protocol.parts import Authentication
+
 
 @pytest.fixture
 def auth_manager():
@@ -29,6 +27,7 @@ def auth_manager():
                          b"\xa7\xc3\x4c\x8a\x70\x90\x8e\xd5\xbe\x0b\x35\x42" \
                          b"\x70\x5f\x73\x8c"
     return manager
+
 
 class TestSCRAMSHA256(object):
 
@@ -49,7 +48,8 @@ class TestSCRAMSHA256(object):
     #         b"SCRAMSHA256": auth_manager.client_key
     #     }
 
-    def test_calculate_client_proof(self, auth_manager):
+    @staticmethod
+    def test_calculate_client_proof(auth_manager):
         salt = b"\x80\x96\x4f\xa8\x54\x28\xae\x3a\x81\xac" \
                b"\xd3\xe6\x86\xa2\x79\x33"
         server_key = b"\x41\x06\x51\x50\x11\x7e\x45\x5f\xec\x2f\x03\xf6" \

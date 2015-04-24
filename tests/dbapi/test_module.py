@@ -16,16 +16,20 @@ import pytest
 
 import pyhdb
 
+
 # Module globals defined by DBAPI 2.0
 def test_apilevel():
     assert pyhdb.apilevel == "2.0"
 
+
 def test_threadsafety():
     assert pyhdb.threadsafety == 2
+
 
 def test_paramstyle():
     # TODO: Support also named format
     assert pyhdb.paramstyle == "format"
+
 
 def test_exceptions():
     assert issubclass(pyhdb.Warning, Exception)
@@ -38,8 +42,9 @@ def test_exceptions():
     assert issubclass(pyhdb.ProgrammingError, pyhdb.Error)
     assert issubclass(pyhdb.NotSupportedError, pyhdb.Error)
 
+
 @pytest.mark.hanatest
 def test_connect_constructors(hana_system):
     connection = pyhdb.connect(*hana_system)
-    assert isinstance(connection, pyhdb.client.Connection)
+    assert isinstance(connection, pyhdb.connection.Connection)
     connection.close()

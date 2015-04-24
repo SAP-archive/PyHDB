@@ -43,9 +43,10 @@ def test_table_1(request, connection):
 
 
 @pytest.mark.hanatest
-class TestIsolationBetweenConnections():
+class TestIsolationBetweenConnections(object):
 
-    def test_commit(self, request, hana_system, test_table_1):
+    @staticmethod
+    def test_commit(request, hana_system, test_table_1):
         connection_1 = pyhdb.connect(*hana_system)
         connection_2 = pyhdb.connect(*hana_system)
 
@@ -59,7 +60,7 @@ class TestIsolationBetweenConnections():
             'INSERT INTO PYHDB_TEST_1 VALUES(%s)', ('connection_1',)
         )
         cursor1.execute("SELECT * FROM PYHDB_TEST_1")
-        assert cursor1.fetchall() == [('connection_1',),]
+        assert cursor1.fetchall() == [('connection_1',)]
 
         cursor2 = connection_2.cursor()
         cursor2.execute("SELECT * FROM PYHDB_TEST_1")
@@ -68,9 +69,10 @@ class TestIsolationBetweenConnections():
         connection_1.commit()
 
         cursor2.execute("SELECT * FROM PYHDB_TEST_1")
-        assert cursor2.fetchall() == [('connection_1',),]
+        assert cursor2.fetchall() == [('connection_1',)]
 
-    def test_rollback(self, request, hana_system, test_table_1):
+    @staticmethod
+    def test_rollback(request, hana_system, test_table_1):
         connection_1 = pyhdb.connect(*hana_system)
         connection_2 = pyhdb.connect(*hana_system)
 
@@ -84,7 +86,7 @@ class TestIsolationBetweenConnections():
             'INSERT INTO PYHDB_TEST_1 VALUES(%s)', ('connection_1',)
         )
         cursor1.execute("SELECT * FROM PYHDB_TEST_1")
-        assert cursor1.fetchall() == [('connection_1',),]
+        assert cursor1.fetchall() == [('connection_1',)]
 
         cursor2 = connection_2.cursor()
         cursor2.execute("SELECT * FROM PYHDB_TEST_1")
@@ -95,7 +97,8 @@ class TestIsolationBetweenConnections():
         cursor1.execute("SELECT * FROM PYHDB_TEST_1")
         assert cursor1.fetchall() == []
 
-    def test_auto_commit(self, request, hana_system, test_table_1):
+    @staticmethod
+    def test_auto_commit(request, hana_system, test_table_1):
         connection_1 = pyhdb.connect(*hana_system, autocommit=True)
         connection_2 = pyhdb.connect(*hana_system, autocommit=True)
 
@@ -109,8 +112,8 @@ class TestIsolationBetweenConnections():
             'INSERT INTO PYHDB_TEST_1 VALUES(%s)', ('connection_1',)
         )
         cursor1.execute("SELECT * FROM PYHDB_TEST_1")
-        assert cursor1.fetchall() == [('connection_1',),]
+        assert cursor1.fetchall() == [('connection_1',)]
 
         cursor2 = connection_2.cursor()
         cursor2.execute("SELECT * FROM PYHDB_TEST_1")
-        assert cursor2.fetchall() == [('connection_1',),]
+        assert cursor2.fetchall() == [('connection_1',)]

@@ -19,6 +19,7 @@ import pytest
 from pyhdb.exceptions import InterfaceError
 from pyhdb.protocol.parts import OptionPart
 
+
 def test_not_pack_none_value_items():
     class DummyOptionPart(OptionPart):
         kind = 126
@@ -37,6 +38,7 @@ def test_not_pack_none_value_items():
     }).pack_data()
     assert arguments == 2
 
+
 def test_unknown_option_is_not_packable():
     class DummyOptionPart(OptionPart):
         kind = 126
@@ -53,7 +55,8 @@ def test_unknown_option_is_not_packable():
 
     assert "Unknown option identifier" in excinfo.exconly()
 
-class TestOptionPartBooleanType():
+
+class TestOptionPartBooleanType(object):
 
     class DummyOptionPart(OptionPart):
         kind = 126
@@ -91,7 +94,8 @@ class TestOptionPartBooleanType():
         )
         assert options == {"bool_field": False}
 
-class TestOptionPartInt():
+
+class TestOptionPartInt(object):
 
     class DummyOptionPart(OptionPart):
         kind = 126
@@ -100,6 +104,7 @@ class TestOptionPartInt():
             # Identifier, (Value, Type)
             "int_field": (1, 3)
         }
+
     def test_pack(self):
         arguments, payload = self.DummyOptionPart({
             "int_field": 123456
@@ -114,7 +119,8 @@ class TestOptionPartInt():
         )
         assert options == {"int_field": 123456}
 
-class TestOptionPartBigInt():
+
+class TestOptionPartBigInt(object):
 
     class DummyOptionPart(OptionPart):
         kind = 126
@@ -138,7 +144,8 @@ class TestOptionPartBigInt():
         )
         assert options == {"bigint_field": 2**32}
 
-class TestOptionPartString():
+
+class TestOptionPartString(object):
 
     class DummyOptionPart(OptionPart):
         kind = 126
@@ -160,7 +167,7 @@ class TestOptionPartString():
         options, = self.DummyOptionPart.unpack_data(
             1,
             BytesIO(
-                b"\x01\x1d\x0b\x00\x48\x65\x6c\x6c" \
+                b"\x01\x1d\x0b\x00\x48\x65\x6c\x6c"
                 b"\x6f\x20\x57\x6f\x72\x6c\x64"
             )
         )

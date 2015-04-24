@@ -12,8 +12,14 @@
 # either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 
+import collections
 import struct
+###
 from pyhdb.protocol.constants import type_codes
+
+
+MessageHeader = collections.namedtuple(
+    'MessageHeader', 'session_id, packet_count, payload_length, varpartsize, num_segments, packet_options, reserved')
 
 
 class BaseLobheader(object):
@@ -60,7 +66,7 @@ class ReadLobHeader(BaseLobheader):
 
     00: TYPE:    I1       Type of data
     01: OPTIONS: I1       Options that further refine the descriptor
-    -> no further data to be read for LOB if options->isNull is true
+    -> no further data to be read for LOB if options->is_null is true
     02: RESERVED: I2      (ignore this)
     04: CHARLENGTH: I8    Length of string (for asci and unicode)
     12: BYTELENGTH: I8    Number of bytes of LOB
