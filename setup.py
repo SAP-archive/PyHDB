@@ -32,6 +32,7 @@ setup(
     version=get_version(),
     license="Apache License Version 2.0",
     url="https://github.com/SAP/pyhdb/",
+    download_url="https://github.com/SAP/PyHDB/tarball/master",
     author="Christoph Heer",
     author_email="christoph.heer@sap.com",
     description="SAP HANA Database Client for Python",
