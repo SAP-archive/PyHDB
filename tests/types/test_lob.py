@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2014 SAP SE.
+# Copyright 2014, 2015 SAP SE.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ from pyhdb.protocol import lobs
 from pyhdb.protocol import parts
 from pyhdb.protocol.types import type_codes
 from pyhdb.exceptions import DataError
+from pyhdb.compat import PY2
 
 
 # #############################################################################################################
@@ -62,7 +63,14 @@ def test_blob_from_bytes_io():
 def test_clob_uses_string_io():
     data = string.ascii_letters
     clob = lobs.Clob(data)
-    assert isinstance(clob.data, io.StringIO)
+    assert isinstance(clob.data, lobs.CLOB_STRING_IO_CLASSES)
+
+
+def test_clob_returns_string_instance():
+    """For PY2 the result value must be a str-instance, not a unicode"""
+    data = string.ascii_letters
+    clob = lobs.Clob(data)
+    assert isinstance(clob.read(), str)
 
 
 def test_clob_from_ascii_string():
@@ -88,6 +96,8 @@ def test_clob_from_nonascii_unicode_raises():
 
 
 def test_clob_from_nonascii_string_raises():
+    if PY2:
+        pytest.skip('test only makes sense for io.StringIO in PY3')
     data = u'朱の子ましけ'
     utf8_data = data.encode('utf8')
     with pytest.raises(UnicodeDecodeError):
@@ -96,7 +106,7 @@ def test_clob_from_nonascii_string_raises():
 
 def test_clob_from_string_io():
     data = string.ascii_letters.decode('ascii')
-    text_io = io.StringIO(data)
+    text_io = lobs.CLOB_STRING_IO(data)
     clob = lobs.Clob(text_io)
     assert clob.getvalue() == data
     assert clob.data is text_io

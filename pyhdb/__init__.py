@@ -1,4 +1,4 @@
-# Copyright 2014 SAP SE
+# Copyright 2014, 2015 SAP SE
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,10 +21,11 @@ logging.config.fileConfig(os.path.join(this_dir, 'logging.conf'))
 
 from pyhdb.exceptions import *
 from pyhdb.connection import Connection
+from pyhdb.protocol.lobs import Blob, Clob, NClob
 
 apilevel = "2.0"
 threadsafety = 2
-paramstyle = "format"
+paramstyle = "numeric"
 
 
 def connect(host, port, user, password, autocommit=False):

@@ -1,7 +1,18 @@
 Changelog
 =========
 
-0.1 (in development)
---------------------
+0.2.1
+-----
+- CLOBs are now using cStringIO as underlying container to hold data as 'str' and not unicode (Python 2.x)
+- Updated README (added basic information about LOBs)
 
+
+0.2.0
+-----
+- Support for BLOB, CLOB, and NCLOB
+- Lots of code refactoring and PEP8 cleanup
+
+
+0.1.0
+-----
 - First release version

@@ -1,4 +1,4 @@
-# Copyright 2014 SAP SE.
+# Copyright 2014, 2015 SAP SE.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,8 +27,7 @@ def test_threadsafety():
 
 
 def test_paramstyle():
-    # TODO: Support also named format
-    assert pyhdb.paramstyle == "format"
+    assert pyhdb.paramstyle == "numeric"
 
 
 def test_exceptions():
