@@ -27,8 +27,7 @@ def test_threadsafety():
 
 
 def test_paramstyle():
-    # TODO: Support also named format
-    assert pyhdb.paramstyle == "format"
+    assert pyhdb.paramstyle == "numeric"
 
 
 def test_exceptions():

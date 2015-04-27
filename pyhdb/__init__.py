@@ -25,7 +25,7 @@ from pyhdb.protocol.lobs import Blob, Clob, NClob
 
 apilevel = "2.0"
 threadsafety = 2
-paramstyle = "format"
+paramstyle = "numeric"
 
 
 def connect(host, port, user, password, autocommit=False):
