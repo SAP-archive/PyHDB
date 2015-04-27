@@ -1,4 +1,4 @@
-# Copyright 2014 SAP SE.
+# Copyright 2014, 2015 SAP SE.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,25 @@ from pyhdb.protocol.message import RequestMessage
 from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.constants import message_types, type_codes
 from pyhdb.protocol.parts import ReadLobRequest
+from pyhdb.compat import PY2, PY3
+
+if PY2:
+    # Depending on the Python version we use different underlying containers for CLOB strings
+    import StringIO
+    import cStringIO
+    CLOB_STRING_IO_CLASSES = (StringIO.StringIO, cStringIO.InputType, cStringIO.OutputType)
+
+    def CLOB_STRING_IO(init_value):
+        # factory function to obtain a read-writable StringIO object
+        # (not possible when directly instantiated with initial value ...)
+        c = cStringIO.StringIO()
+        c.write(init_value)
+        c.seek(0)
+        return c
+else:
+    CLOB_STRING_IO_CLASSES = (io.StringIO, )
+    CLOB_STRING_IO = io.StringIO
+
 
 recv_log = logging.getLogger('receive')
 
@@ -96,7 +115,8 @@ class Lob(object):
         """
         # A nice trick is to (ab)use BytesIO.seek() to go to the desired position for easier calculation.
         # This will not add any data to the buffer however - very convenient!
-        new_pos = self.data.seek(offset, whence)
+        self.data.seek(offset, whence)
+        new_pos = self.data.tell()
         missing_bytes_to_read = new_pos - self._current_lob_length
         if missing_bytes_to_read > 0:
             # Trying to seek beyond currently available LOB data, so need to load some more first.
@@ -204,14 +224,6 @@ class Blob(Lob):
 class _CharLob(Lob):
     encoding = None
 
-    def _init_io_container(self, init_value):
-        if isinstance(init_value, io.StringIO):
-            return init_value
-
-        if isinstance(init_value, str):
-            init_value = init_value.decode(self.encoding)
-        return io.StringIO(init_value)
-
     def encode(self):
         return self.getvalue().encode(self.encoding)
 
@@ -226,12 +238,22 @@ class Clob(_CharLob):
         return self.data.getvalue().decode(self.encoding)
 
     def _init_io_container(self, init_value):
-        """For CLobs ensure that an initial unicode value only contains valid ascii chars.
-        This test will will raise a UnicodeEncodeError if not.
+        """Initialize container to hold lob data.
+        Here either a cStringIO or a io.StringIO class is used depending on the Python version.
+        For CLobs ensure that an initial unicode value only contains valid ascii chars.
         """
-        if isinstance(init_value, unicode):
-            init_value.encode('ascii')
-        return super(Clob, self)._init_io_container(init_value)
+        if isinstance(init_value, CLOB_STRING_IO_CLASSES):
+            # already a valid StringIO instance, just use it as it is
+            v = init_value
+        else:
+            # works for strings and unicodes. However unicodes must only contain valid ascii chars!
+            if PY3:
+                # a io.StringIO also accepts any unicode characters, but we must be sure that only
+                # ascii chars are contained. In PY2 we use a cStringIO class which complains by itself
+                # if it catches this case, so in PY2 no extra check needs to be performed here.
+                init_value.encode('ascii')  # this is just a check, result not needed!
+            v = CLOB_STRING_IO(init_value)
+        return v
 
 
 class NClob(_CharLob):
@@ -242,6 +264,15 @@ class NClob(_CharLob):
     def __unicode__(self):
         """Convert lob into its unicode format"""
         return self.data.getvalue()
+
+    def _init_io_container(self, init_value):
+        if isinstance(init_value, io.StringIO):
+            return init_value
+
+        if PY2 and isinstance(init_value, str):
+            # io.String() only accepts unicode values, so do necessary conversion here:
+            init_value = init_value.decode(self.encoding)
+        return io.StringIO(init_value)
 
 
 LOB_TYPE_CODE_MAP = {

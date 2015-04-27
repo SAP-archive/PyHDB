@@ -21,6 +21,7 @@ logging.config.fileConfig(os.path.join(this_dir, 'logging.conf'))
 
 from pyhdb.exceptions import *
 from pyhdb.connection import Connection
+from pyhdb.protocol.lobs import Blob, Clob, NClob
 
 apilevel = "2.0"
 threadsafety = 2
