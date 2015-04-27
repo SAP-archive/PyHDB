@@ -60,14 +60,19 @@ The basic pyhdb usage is common to database adapters implementing the `DBAPI 2.0
 Establish a database connection
 -------------------------------
 
-The function ``pyhdb.connect`` creates a new database session and returns a new ``Connection`` instance. Please note that port isn't the instance number of you SAP HANA database. The SQL port of your SAP HANA is made up of ``3<instance-number>15`` for example the port of the default instance number ``00`` is ``30015``.
+The function ``pyhdb.connect`` creates a new database session and returns a new ``Connection`` instance.
+Please note that port isn't the instance number of you SAP HANA database. The SQL port of your SAP
+HANA is made up of ``3<instance-number>15`` for example the port of the default instance number ``00`` is ``30015``.
 
-Currently pyhdb only supports the user and password authentication method. If you need another authentication method like SAML or Kerberos than please open a GitHub issue. Also there is currently no support of encrypted network communication between client and database.
+Currently pyhdb only supports the user and password authentication method. If you need another
+authentication method like SAML or Kerberos than please open a GitHub issue. Also there is currently
+no support of encrypted network communication between client and database.
 
 Cursor object
 -------------
 
-With the method ``cursor`` of your ``Connection`` object you create a new ``Cursor`` object. This object is able to execute SQL statements and fetch one or multiple rows of the resultset from the database.
+With the method ``cursor`` of your ``Connection`` object you create a new ``Cursor`` object.
+This object is able to execute SQL statements and fetch one or multiple rows of the resultset from the database.
 
 Example select
 ^^^^^^^^^^^^^^
@@ -110,7 +115,8 @@ With the execute method you can also execute DDL statements like ``CREATE TABLE`
 Example insert
 ^^^^^^^^^^^^^^
 
-You can also execute DML Statements with the execute method like ``INSERT`` or ``DELETE``. The Cursor attribute ``rowcount`` contains the number of affected rows by the last statement.
+You can also execute DML Statements with the execute method like ``INSERT`` or ``DELETE``. The Cursor
+attribute ``rowcount`` contains the number of affected rows by the last statement.
 
 .. code-block:: pycon
 
@@ -118,22 +124,80 @@ You can also execute DML Statements with the execute method like ``INSERT`` or `
     >>> cursor.rowcount
     1
 
+
+LOBs
+^^^^
+
+Three different types of LOBs are supported and corresponding LOB classes have been implemented:
+* Blob - binary LOB data
+* Clob - string LOB data containing only ascii characters
+* NClob - string (unicode for Python 2.x) LOB data containing any valid unicode character
+
+LOB instance provide a file-like interface (similar to StringIO instances) for accessing LOB data.
+For HANA LOBs lazy loading of the actual data is implemented behind the scenes. An initial select statement for a LOB
+only loads the first 1024 bytes on the client:
+
+ .. code-block:: pycon
+
+    >>> mylob = cursor.execute('select myclob from mytable where id=:1', [some_id]).fetchone()[0]
+    >>> mylob
+    <Clob length: 2000 (currently loaded from hana: 1024)>
+
+By calling the read(<num-chars>)-method more data will be loaded from the database once <num-chars> exceeds the number
+of currently loaded data:
+
+ .. code-block:: pycon
+
+    >>> myload.read(1500)   # -> returns the first 1500 chars, by loading extra 476 chars from the db
+    >>> mylob
+    <Clob length: 2000 (currently loaded from hana: 1500)>
+    >>> myload.read()   # -> returns the last 500 chars by loading them from the db
+    >>> mylob
+    <Clob length: 2000 (currently loaded from hana: 2000)>
+
+Using the ``seek()`` methods it is possible to point the file pointer position within the LOB to arbitrary positions.
+``tell()`` will return the current position.
+
+
+LOBs can be written to the database via ``insert`` or ``update``-statemens with LOB data provided either
+as strings or LOB instances:
+
+ .. code-block:: pycon
+
+    >>> from pyhdb import NClob
+    >>> nclob_data = u'朱の子ましける日におえつかうまつ'
+    >>> nclob = NClob(nclob_data)
+    >>> cursor.execute('update mynclob set nclob_1=:1, nclob_2=:2 where id=:3', [nclob, nclob_data, myid])
+
+.. note:: Currently LOBs can only be written in the database for sizes up to 128k (entire amount of data provided in one
+          ``update`` or ``insert`` statement). This constraint will be removed in one of the next releases of PyHDB.
+          This limitation does however not apply when reading LOB data from the database.
+
+
+
 Transaction handling
 --------------------
 
-Please note that all cursors created from the same connection are not isolated. Any change done by one cursor is immediately visible to all other cursors from same connection. Cursors created from different connections are isolated as the connection based on the normal transaction handling.
+Please note that all cursors created from the same connection are not isolated. Any change done by one
+cursor is immediately visible to all other cursors from same connection. Cursors created from different
+connections are isolated as the connection based on the normal transaction handling.
 
-The connection objects provides to method ``commit`` which commit any pending transaction of the connection. The method ``rollback`` undo all changes since the last commit.
+The connection objects provides to method ``commit`` which commit any pending transaction of the
+connection. The method ``rollback`` undo all changes since the last commit.
 
 Contribute
 ----------
 
-If you found bugs or have other issues than you are welcome to create a GitHub Issue. If you have questions about usage or something similar please create a `Stack Overflow <http://stackoverflow.com/>`_ Question with tag `pyhdb <http://stackoverflow.com/questions/tagged/pyhdb>`_.
+If you found bugs or have other issues than you are welcome to create a GitHub Issue. If you have
+questions about usage or something similar please create a `Stack Overflow <http://stackoverflow.com/>`_
+Question with tag `pyhdb <http://stackoverflow.com/questions/tagged/pyhdb>`_.
 
 Run tests
 ^^^^^^^^^
 
-pyhdb provides a test suite which covers the most use-cases and protocol parts. To run the test suite you need the ``pytest`` and ``mock`` package. Afterwards just run ``py.test`` inside of the root directory of the repository.
+pyhdb provides a test suite which covers the most use-cases and protocol parts. To run the test suite
+you need the ``pytest`` and ``mock`` package. Afterwards just run ``py.test`` inside of the root
+directory of the repository.
 
 .. code-block:: bash
 
@@ -150,7 +214,7 @@ You can also test different python version with ``tox``.
 ToDos
 ^^^^^
 
-* BLOB, LOB and NLOB Support
+* Implementing support for writing LOBs of arbitrary size to the database
 * Allow execution of stored database procedure
 * Support of ``SELECT FOR UPDATE``
 * Authentication methods
