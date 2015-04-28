@@ -92,9 +92,9 @@ class PreparedStatement(object):
             except StopIteration:
                 self.end_of_data = True
                 raise
-            if not isinstance(parameters, (list, tuple)):
-                raise ProgrammingError("Prepared statement parameters supplied as %s, shall be list or tuple." %
-                                       str(type(parameters)))
+            if not isinstance(parameters, (list, tuple, dict)):
+                raise ProgrammingError("Prepared statement parameters supplied as %s, shall be list, tuple or dict." %
+                                       type(parameters).__name__)
 
             if len(parameters) != len(self._params_metadata):
                 raise ProgrammingError("Prepared statement parameters expected %d supplied %d." %
