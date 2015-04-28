@@ -509,31 +509,26 @@ class ParameterMetadata(Part):
 
     @classmethod
     def unpack_data(cls, argument_count, payload):
-        ParamMetadata = namedtuple('ParameterMetadataTuple', 'options datatype mode id length fraction')
         values = []
+        param_md_tuple = namedtuple('ParameterMetadata', 'mode datatype iotype id length fraction')
+        text_offset = 16 * argument_count
+        # read parameter metadata
         for i in iter_range(argument_count):
-            param = struct.unpack("bbbbIhhI", payload.read(16))
-            if param[4] == 0xffffffff:
-                # no parameter name given
+            mode, datatype, iotype, filler1, name_offset, length, fraction, filler2 = struct.unpack("bbbbIhhI", payload.read(16))
+            param_metadata = param_md_tuple(mode, datatype, iotype, name_offset, length, fraction)
+            if name_offset == 0xffffffff:
+                # param id is parameter position
                 param_id = i
             else:
-                # offset of the parameter name set
-                payload.seek(param[4], 0)
-                length, = struct.unpack('B', payload.read(1))
+                # read parameter name
+                current_pos = payload.tell()
+                payload.seek(text_offset + name_offset)
+                length = ord(payload.read(1))
                 param_id = payload.read(length).decode('utf-8')
-
-            # replace name offset with param name, if parameter names supplied,
-            # or parameter position (integer), if names not supplied)
-            param_metadata = list(param)
-            param_metadata[4] = param_id
-            # remove unused fields
-            del param_metadata[3]
-            del param_metadata[6]
-
-            options, datatype, mode, name, length, fraction = param_metadata
-            param_metadata = ParamMetadata(options, datatype, mode, name, length, fraction)
-
-            values.append(param_metadata)
+                payload.seek(current_pos)
+            values.append(param_md_tuple(mode, datatype, iotype, param_id, length, fraction))
+        for v in values:
+            print v
         return tuple(values),
 
 

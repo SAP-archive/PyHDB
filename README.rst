@@ -38,6 +38,8 @@ Getting started
 
 If you do not have access to a SAP HANA server, go to the `SAP HANA Developer Center <http://scn.sap.com/community/developer-center/hana>`_ and choose one of the options to `get your own trial SAP HANA Server <http://scn.sap.com/docs/DOC-31722>`_.
 
+For using PyHDB with hanatrial instance, follow `this guide <http://scn.sap.com/community/developer-center/hana/blog/2015/04/24/try-hanatrial-using-python-or-nodejs>`_.
+
 The basic pyhdb usage is common to database adapters implementing the `DBAPI 2.0 interface (PEP 249) <http://legacy.python.org/dev/peps/pep-0249/>`_. The following example shows how easy it's to use the pyhdb module.
 
 .. code-block:: pycon
