@@ -26,6 +26,7 @@ from pyhdb.protocol.lobs import Blob, Clob, NClob
 apilevel = "2.0"
 threadsafety = 2
 paramstyle = "numeric"
+tracing = os.environ.get('HDB_TRACE', 'FALSE').upper() in ('TRUE', '1')
 
 
 def connect(host, port, user, password, autocommit=False):

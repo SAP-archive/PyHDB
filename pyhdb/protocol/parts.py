@@ -18,7 +18,6 @@ from __future__ import absolute_import
 import io
 import struct
 import logging
-from io import BytesIO
 from types import StringTypes
 from collections import namedtuple
 from weakref import WeakValueDictionary
@@ -28,7 +27,7 @@ from pyhdb.protocol import types
 from pyhdb.protocol import constants
 from pyhdb.exceptions import InterfaceError, DatabaseError, DataError
 from pyhdb.compat import is_text, iter_range, with_metaclass
-from pyhdb.protocol.headers import ReadLobHeader
+from pyhdb.protocol.headers import ReadLobHeader, PartHeader
 from pyhdb.protocol.constants.general import MAX_MESSAGE_SIZE
 
 recv_log = logging.getLogger('receive')
@@ -86,12 +85,15 @@ class PartMeta(type):
 class Part(with_metaclass(PartMeta, object)):
 
     header_struct = struct.Struct('<bbhiii')
+    header_size = header_struct.size
     attribute = 0
     kind = None
     bigargumentcount = 0  # what is this useful for? Seems to be always zero ...
+    header = None
 
     # Attribute to get source of part
     source = 'client'
+    __tracing_attrs__ = ['header']
 
     def pack(self, remaining_size):
         """Pack data of part into binary format"""
@@ -102,8 +104,9 @@ class Part(with_metaclass(PartMeta, object)):
         if payload_length % 8 != 0:
             payload += b"\x00" * (8 - payload_length % 8)
 
-        return self.header_struct.pack(self.kind, self.attribute, arguments_count, self.bigargumentcount,
-                                       payload_length, remaining_size) + payload
+        self.header = PartHeader(self.kind, self.attribute, arguments_count, self.bigargumentcount,
+                                 payload_length, remaining_size)
+        return self.header_struct.pack(*self.header) + payload
 
     def pack_data(self):
         raise NotImplemented()
@@ -111,45 +114,33 @@ class Part(with_metaclass(PartMeta, object)):
     @classmethod
     def unpack_from(cls, payload, expected_parts):
         """Unpack parts from payload"""
-        num_parts = 0
 
-        while expected_parts > num_parts:
+        for num_part in iter_range(expected_parts):
             try:
-                part_header = cls.header_struct.unpack(
-                    payload.read(16)
-                )
+                part_header = PartHeader(*cls.header_struct.unpack(payload.read(cls.header_size)))
             except struct.error:
                 raise InterfaceError("No valid part header")
 
-            if part_header[4] % 8 != 0:
-                part_payload_size = part_header[4] + 8 - (part_header[4] % 8)
+            if part_header.buffer_length % 8 != 0:
+                part_payload_size = part_header.buffer_length + 8 - (part_header.buffer_length % 8)
             else:
-                part_payload_size = part_header[4]
-            part_payload = BytesIO(payload.read(part_payload_size))
+                part_payload_size = part_header.buffer_length
+            part_payload = io.BytesIO(payload.read(part_payload_size))
 
             try:
-                _PartClass = PART_MAPPING[part_header[0]]
+                _PartClass = PART_MAPPING[part_header.part_kind]
             except KeyError:
-                raise InterfaceError(
-                    "Unknown part kind %s" % part_header[0]
-                )
+                raise InterfaceError("Unknown part kind %s" % part_header.part_kind)
 
-            msg = 'Part Header (%d/%d, 16 bytes): partkind: %s(%d), ' \
-                  'partattributes: %d, argumentcount: %d, bigargumentcount: %d'\
-                  ', bufferlength: %d, buffersize: %d'
-            debug(msg, num_parts+1, expected_parts, _PartClass.__name__,
-                  *part_header[:6])
-            debug('Read %d bytes payload for part %d',
-                  part_payload_size, num_parts + 1)
-            init_arguments = _PartClass.unpack_data(
-                part_header[2], part_payload
-            )
+            debug('%s (%d/%d): %s', _PartClass.__name__, num_part+1, expected_parts, str(part_header))
+            debug('Read %d bytes payload for part %d', part_payload_size, num_part + 1)
+
+            init_arguments = _PartClass.unpack_data(part_header.argument_count, part_payload)
             debug('Part data: %s', init_arguments)
             part = _PartClass(*init_arguments)
-            part.attribute = part_header[1]
+            part.header = part_header
+            part.attribute = part_header.part_attributes
             part.source = 'server'
-
-            num_parts += 1
             yield part
 
 
@@ -160,6 +151,7 @@ class Command(Part):
     """
 
     kind = constants.part_kinds.COMMAND
+    __tracing_attrs__ = ['header', 'sql_statement']
 
     def __init__(self, sql_statement):
         self.sql_statement = sql_statement
@@ -196,6 +188,7 @@ class Error(Part):
 
     kind = constants.part_kinds.ERROR
     struct = struct.Struct("iiib")
+    __tracing_attrs__ = ['header', 'errors']
 
     def __init__(self, errors):
         self.errors = errors
@@ -217,6 +210,7 @@ class Error(Part):
 class StatementId(Part):
 
     kind = constants.part_kinds.STATEMENTID
+    __tracing_attrs__ = ['header', 'statement_id']
 
     def __init__(self, statement_id):
         self.statement_id = statement_id
@@ -233,6 +227,7 @@ class StatementId(Part):
 class RowsAffected(Part):
 
     kind = constants.part_kinds.ROWSAFFECTED
+    __tracing_attrs__ = ['header', 'values']
 
     def __init__(self, values):
         self.values = values
@@ -251,6 +246,7 @@ class ResultSetId(Part):
     """
 
     kind = constants.part_kinds.RESULTSETID
+    __tracing_attrs__ = ['header', 'value']
 
     def __init__(self, value):
         self.value = value
@@ -281,6 +277,7 @@ class ReadLobRequest(Part):
 
     kind = constants.part_kinds.READLOBREQUEST
     part_struct = struct.Struct(b'<8sQI4s')
+    __tracing_attrs__ = ['header', 'locator_id', 'readoffset', 'readlength']
 
     def __init__(self, locator_id, readoffset, readlength):
         self.locator_id = locator_id
@@ -299,6 +296,7 @@ class ReadLobReply(Part):
     kind = constants.part_kinds.READLOBREPLY
     part_struct_p1 = struct.Struct(b'<8sB')
     part_struct_p2 = struct.Struct(b'<I3s')
+    __tracing_attrs__ = ['header', 'is_data_included', 'is_last_data', 'is_null']
 
     def __init__(self, data, is_data_included, is_last_data, is_null):
         # print 'realobreply called with args', args
@@ -332,6 +330,7 @@ class Parameters(Part):
     """Prepared statement parameters' data """
 
     kind = constants.part_kinds.PARAMETERS
+    __tracing_attrs__ = ['header', 'parameters']
 
     def __init__(self, parameters):
         """Initialize parameter part
@@ -429,6 +428,7 @@ class Parameters(Part):
 class Authentication(Part):
 
     kind = constants.part_kinds.AUTHENTICATION
+    __tracing_attrs__ = ['header', 'user', 'methods']
 
     def __init__(self, user, methods):
         self.user = user
@@ -455,6 +455,7 @@ class ClientId(Part):
     # Part not documented.
 
     kind = constants.part_kinds.CLIENTID
+    __tracing_attrs__ = ['header', 'client_id']
 
     def __init__(self, client_id):
         self.client_id = client_id
@@ -485,6 +486,7 @@ class FetchSize(Part):
 
     kind = constants.part_kinds.FETCHSIZE
     struct = struct.Struct('i')
+    __tracing_attrs__ = ['header', 'size']
 
     def __init__(self, size):
         self.size = size
@@ -500,6 +502,7 @@ class FetchSize(Part):
 class ParameterMetadata(Part):
 
     kind = constants.part_kinds.PARAMETERMETADATA
+    __tracing_attrs__ = ['header', 'values']
 
     def __init__(self, values):
         self.values = values
@@ -537,6 +540,7 @@ class ParameterMetadata(Part):
 class ResultSetMetaData(Part):
 
     kind = constants.part_kinds.RESULTSETMETADATA
+    __tracing_attrs__ = ['header', 'columns']
 
     def __init__(self, columns):
         self.columns = columns

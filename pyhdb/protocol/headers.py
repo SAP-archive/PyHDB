@@ -19,7 +19,22 @@ from pyhdb.protocol.constants import type_codes
 
 
 MessageHeader = collections.namedtuple(
-    'MessageHeader', 'session_id, packet_count, payload_length, varpartsize, num_segments, packet_options, reserved')
+    'MessageHeader', 'session_id, packet_count, payload_length, varpartsize, num_segments, packet_options')
+
+
+RequestSegmentHeader = collections.namedtuple(
+    'RequestSegmentHeader',
+    'segment_length, segment_offset, num_parts, segment_number, segment_kind, message_type, commit, command_options')
+
+
+ReplySegmentHeader = collections.namedtuple(
+    'ReplySegmentHeader',
+    'segment_length, segment_offset, num_parts, segment_number, segment_kind, function_code')
+
+
+PartHeader = collections.namedtuple(
+    'PartHeader',
+    'part_kind, part_attributes, argument_count, bigargument_count, buffer_length, buffer_size')
 
 
 class BaseLobheader(object):

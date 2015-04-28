@@ -18,20 +18,23 @@ import struct
 from pyhdb.protocol.constants.general import MAX_MESSAGE_SIZE
 from pyhdb.protocol.headers import MessageHeader
 from pyhdb.protocol.segments import ReplySegment
+from pyhdb.lib.tracing import trace
 
 
 class BaseMessage(object):
     """
     Message - basic frame for sending to and receiving data from HANA db.
     """
-    header_struct = struct.Struct('qiIIhb9s')  # I8 I4 UI4 UI4 I2 I1 s[9]
+    header_struct = struct.Struct('qiIIhb9x')  # I8 I4 UI4 UI4 I2 I1 x[9]
     header_size = header_struct.size
+    __tracing_attrs__ = ['header', 'segments']
 
-    def __init__(self, session_id, packet_count, segments=(), autocommit=False):
+    def __init__(self, session_id, packet_count, segments=(), autocommit=False, header=None):
         self.session_id = session_id
         self.packet_count = packet_count
         self.autocommit = autocommit
         self.segments = segments if isinstance(segments, (list, tuple)) else (segments, )
+        self.header = header
 
 
 class RequestMessage(BaseMessage):
@@ -52,21 +55,18 @@ class RequestMessage(BaseMessage):
 
         packet_length = len(payload.getvalue()) - self.header_size
         total_space = MAX_MESSAGE_SIZE - self.header_size
-        count_of_segments = len(self.segments)
 
-        header = self.header_struct.pack(
-            self.session_id,
-            self.packet_count,
-            packet_length,
-            total_space,
-            count_of_segments,
-            0,             # package options
-            '\x00' * 9     # Reserved
-        )
+        self.header = MessageHeader(self.session_id, self.packet_count, packet_length, total_space,
+                                    num_segments=len(self.segments), packet_options=0)
+        packed_header = self.header_struct.pack(*self.header)
+
         # Go back to begining of payload for writing message header:
         payload.seek(0)
-        payload.write(header)
+        payload.write(packed_header)
         payload.seek(0, io.SEEK_END)
+
+        trace(self)
+
         return payload
 
     @classmethod
@@ -83,14 +83,16 @@ class RequestMessage(BaseMessage):
 class ReplyMessage(BaseMessage):
 
     @classmethod
-    def unpack_reply(cls, connection, header, payload):
+    def unpack_reply(cls, header, payload):
         """
         Takes already unpacked header and binary payload of received request reply and creates message instance
         """
         reply = cls(
             header.session_id, header.packet_count,
-            segments=tuple(ReplySegment.unpack_from(payload, expected_segments=header.num_segments))
+            segments=tuple(ReplySegment.unpack_from(payload, expected_segments=header.num_segments)),
+            header=header
         )
+        trace(reply)
         return reply
 
     # Helper methods

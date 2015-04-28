@@ -117,7 +117,7 @@ class Connection(object):
             raise OperationalError("Lost connection to HANA server (%r)" % error)
 
         payload.seek(0)  # set pointer position to beginning of buffer
-        return ReplyMessage.unpack_reply(self, header, payload)
+        return ReplyMessage.unpack_reply(header, payload)
 
     def get_next_packet_count(self):
         with self._packet_count_lock:

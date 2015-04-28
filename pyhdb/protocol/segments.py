@@ -18,8 +18,12 @@ import logging
 from io import BytesIO
 ###
 from pyhdb.protocol.constants import part_kinds
+from pyhdb.compat import iter_range
 from pyhdb.protocol.constants.general import MAX_MESSAGE_SIZE, MESSAGE_HEADER_SIZE
 from pyhdb.protocol.parts import Part
+from pyhdb.protocol.headers import RequestSegmentHeader, ReplySegmentHeader
+from pyhdb.protocol.constants import segment_kinds
+
 
 MAX_SEGMENT_SIZE = MAX_MESSAGE_SIZE - MESSAGE_HEADER_SIZE
 
@@ -31,17 +35,49 @@ class BaseSegment(object):
     """
     Base class for request and reply segments
     """
-    header_struct = struct.Struct('<iihhb')  # I4 I4 I2 I2 I1
-    header_size = header_struct.size
+    base_header_struct_fmt = '<iihh'  # I4 I4 I2 I2
     segment_kind = None
+    __tracing_attrs__ = ['header', 'parts']
 
-    def __init__(self, parts=None):
+    def __init__(self, parts=None, header=None):
         if parts is None:
             self.parts = []
         elif isinstance(parts, (list, tuple)):
             self.parts = parts
         else:
             self.parts = [parts]
+        self.header = header
+
+    def write_trace(self, tracer):
+        tracer.writeln(u'%s  = {' % self.__class__.__name__)
+        tracer.incr()
+        tracer.writeln(u'%s,' % str(self.header))
+        tracer.writeln(u'Parts = [')
+        tracer.incr()
+        for parts in self.parts:
+            parts.write_trace(tracer)
+        tracer.decr()
+        tracer.writeln(u']')
+        tracer.decr()
+        tracer.writeln(u'}')
+        return tracer
+
+
+class RequestSegment(BaseSegment):
+    """
+    Request segment class - used for sending request messages to HANA db
+    """
+    segment_kind = segment_kinds.REQUEST
+    header_struct = struct.Struct(BaseSegment.base_header_struct_fmt + 'bbbb8x')  # + I1 I1 I1 I1 x[8]
+    header_size = header_struct.size
+
+    def __init__(self, message_type, parts=None, header=None):
+        super(RequestSegment, self).__init__(parts, header)
+        self.message_type = message_type
+
+    @property
+    def command_options(self):
+        return 0
 
     @property
     def offset(self):
@@ -69,121 +105,65 @@ class BaseSegment(object):
         # after the payload of all segments and parts has been written:
         payload.seek(self.header_size, io.SEEK_CUR)
 
-        # Write out payload of parts:
+        # Generate payload of parts:
         self.build_payload(payload)
-        payload_length = payload.tell() - segment_payload_start_pos  # calc length of parts payload
 
-        header = self.header_struct.pack(
-            payload_length,
-            self.offset,
-            len(self.parts),
-            self.number,
-            self.segment_kind
-        ) + self.pack_additional_header(**kwargs)
+        segment_length = payload.tell() - segment_payload_start_pos  # calc length of parts payload
+        self.header = RequestSegmentHeader(segment_length, self.offset, len(self.parts), self.number, self.segment_kind,
+                                           self.message_type, int(kwargs.get('commit', 0)), self.command_options)
+        packed_header = self.header_struct.pack(*self.header)
 
         # Go back to beginning of payload header for writing segment header:
         payload.seek(segment_payload_start_pos)
-        payload.write(header)
+        payload.write(packed_header)
         # Put file pointer at the end of the bffer so that next segment can be appended:
         payload.seek(0, io.SEEK_END)
-
-    def pack_additional_header(self, **kwargs):
-        raise NotImplemented
-
-
-class RequestSegment(BaseSegment):
-    """
-    Request segment class - used for sending request messages to HANA db
-    """
-    segment_kind = 1
-    request_header_struct = struct.Struct('bbb8x')  # I1 I1 I1 B[8]
-    header_size = BaseSegment.header_struct.size + request_header_struct.size
-
-    def __init__(self, message_type, parts=None):
-        super(RequestSegment, self).__init__(parts)
-        self.message_type = message_type
-
-    @property
-    def command_options(self):
-        return 0
-
-    def pack_additional_header(self, **kwargs):
-        return self.request_header_struct.pack(
-            self.message_type,
-            int(kwargs.get('commit', 0)),
-            self.command_options
-        )
 
 
 class ReplySegment(BaseSegment):
     """
     Reqply segment class - used when receiving messages from HANA db
     """
-    segment_kind = 2
-    reply_header_struct = struct.Struct('<bh8B')  # I1 I2 B[8]
-    header_size = BaseSegment.header_struct.size + reply_header_struct.size
+    segment_kind = segment_kinds.REPLY
+    header_struct = struct.Struct(BaseSegment.base_header_struct_fmt + 'bxh8x')  # + I1 x I2 x[8]
+    header_size = header_struct.size
 
-    def __init__(self, function_code, parts=None):
-        super(ReplySegment, self).__init__(parts)
+    def __init__(self, function_code, parts=None, header=None):
+        super(ReplySegment, self).__init__(parts, header)
         self.function_code = function_code
 
     @classmethod
     def unpack_from(cls, payload, expected_segments):
-        num_segments = 0
 
-        while num_segments < expected_segments:
+        for num_segment in iter_range(expected_segments):
             try:
-                base_segment_header = cls.header_struct.unpack(
-                    payload.read(13)
-                )
+                segment_header = ReplySegmentHeader(*cls.header_struct.unpack(payload.read(cls.header_size)))
             except struct.error:
                 raise Exception("No valid segment header")
 
-            # Read additional header fields
-            try:
-                segment_header = \
-                    base_segment_header + cls.reply_header_struct.unpack(
-                        payload.read(11)
-                    )
-            except struct.error:
-                raise Exception("No valid reply segment header")
-
-            msg = 'Segment Header (%d/%d, 24 bytes): segmentlength: %d, ' \
-                  'segmentofs: %d, noofparts: %d, segmentno: %d, rserved: %d,' \
-                  ' segmentkind: %d, functioncode: %d'
-            debug(msg, num_segments+1, expected_segments, *segment_header[:7])
+            debug('%s (%d/%d): %s', cls.__name__, num_segment + 1, expected_segments, str(segment_header))
             if expected_segments == 1:
-                # If we just expects one segment than we can take the full
-                # payload. This also a workaround of an internal bug.
+                # If we just expects one segment than we can take the full payload.
+                # This also a workaround of an internal bug (Which bug?)
                 segment_payload_size = -1
             else:
-                segment_payload_size = segment_header[0] - cls.header_size
+                segment_payload_size = segment_header.segment_length - cls.header_size
 
             # Determinate segment payload
             pl = payload.read(segment_payload_size)
             segment_payload = BytesIO(pl)
-            debug('Read %d bytes payload segment %d', len(pl), num_segments + 1)
+            debug('Read %d bytes payload segment %d', len(pl), num_segment + 1)
 
-            num_segments += 1
+            parts = tuple(Part.unpack_from(segment_payload, expected_parts=segment_header.num_parts))
+            segment = cls(segment_header.function_code, parts, header=segment_header)
 
-            if base_segment_header[4] == 2:  # Reply segment
-                yield ReplySegment.unpack(segment_header, segment_payload)
-            elif base_segment_header[4] == 5:  # Error segment
-                error = ReplySegment.unpack(segment_header, segment_payload)
+            if segment_header.segment_kind == segment_kinds.REPLY:
+                yield segment
+            elif segment_header.segment_kind == segment_kinds.ERROR:
+                error = segment
                 if error.parts[0].kind == part_kinds.ROWSAFFECTED:
                     raise Exception("Rows affected %s" % (error.parts[0].values,))
                 elif error.parts[0].kind == part_kinds.ERROR:
                     raise error.parts[0].errors[0]
             else:
                 raise Exception("Invalid reply segment")
-
-    @classmethod
-    def unpack(cls, header, payload):
-        """
-        Takes unpacked header and payload of segment and
-        create ReplySegment object.
-        """
-        return cls(
-            header[6],
-            tuple(Part.unpack_from(payload, expected_parts=header[2]))
-        )
