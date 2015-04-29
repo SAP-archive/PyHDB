@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
 import collections
 from pyhdb.protocol.message import RequestMessage
 from pyhdb.protocol.segments import RequestSegment
@@ -19,7 +20,6 @@ from pyhdb.protocol.types import escape_values, by_type_code
 from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, Parameters
 from pyhdb.protocol.constants import message_types, function_codes, part_kinds
 from pyhdb.exceptions import ProgrammingError, InterfaceError, DatabaseError
-from pyhdb.compat import iter_range
 
 
 FORMAT_OPERATION_ERRORS = [
@@ -320,7 +320,7 @@ class Cursor(object):
 
     def fetchmany(self, size=None):
         """Fetch many rows from select result set.
-        :param size: Number of rows to return. If size is -1 then return all available rows.
+        :param size: Number of rows to return.
         :returns: list of row records (tuples)
         """
         self._check_closed()
@@ -370,7 +370,7 @@ class Cursor(object):
         """Fetch all available rows from select result set.
         :returns: list of row tuples
         """
-        return self.fetchmany(size=-1)
+        return self.fetchmany(size=sys.maxint)
 
     def close(self):
         self.connection = None
