@@ -172,12 +172,12 @@ class ResultSet(Part):
     structure informations the unpacking is not possible. In a
     later step we will unpack the data.
     """
-
     kind = constants.part_kinds.RESULTSET
+    __tracing_attrs__ = ['header', 'num_rows']
 
-    def __init__(self, payload, rows):
+    def __init__(self, payload, num_rows):
         self.payload = payload
-        self.rows = rows
+        self.num_rows = num_rows
 
     @classmethod
     def unpack_data(cls, argument_count, payload):

@@ -185,9 +185,9 @@ class Cursor(object):
             parts = response.segments[0].parts
             function_code = response.segments[0].function_code
             if function_code == function_codes.SELECT:
-                self._handle_prepared_select(parts, prepared_statement.result_metadata_part)
+                self._handle_select(parts, prepared_statement.result_metadata_part)
             elif function_code in function_codes.DML:
-                self._handle_prepared_insert(parts)
+                self._handle_insert(parts)
             elif function_code == function_codes.DDL:
                 # No additional handling is required
                 pass
@@ -211,7 +211,7 @@ class Cursor(object):
         parts = response.segments[0].parts
         function_code = response.segments[0].function_code
         if function_code == function_codes.SELECT:
-            self._handle_select(parts)
+            self._handle_select(parts, parts[0])
         elif function_code in function_codes.DML:
             self._handle_insert(parts)
         elif function_code == function_codes.DDL:
@@ -275,6 +275,36 @@ class Cursor(object):
         # Return cursor object:
         return self
 
+    def _handle_insert(self, parts):
+        self.description = None
+        for part in parts:
+            if part.kind == part_kinds.ROWSAFFECTED:
+                self.rowcount = part.values[0]
+            elif part.kind in (part_kinds.TRANSACTIONFLAGS, part_kinds.STATEMENTCONTEXT):
+                pass
+            else:
+                raise InterfaceError("Prepared insert statement response, unexpected part kind %d." % part.kind)
+        self._executed = True
+
+    def _handle_select(self, parts, result_metadata):
+        self.rowcount = -1
+        self.description, self._column_types = self._handle_result_metadata(result_metadata)
+
+        for part in parts:
+            if part.kind == part_kinds.RESULTSETID:
+                self._resultset_id = part.value
+            elif part.kind == part_kinds.RESULTSET:
+                self._buffer = collections.deque()
+                for row in self._unpack_rows(part.payload, part.num_rows):
+                    self._buffer.append(row)
+
+                self._received_last_resultset_part = part.attribute & 1
+                self._executed = True
+            elif part.kind in (part_kinds.STATEMENTCONTEXT, part_kinds.RESULTSETMETADATA):
+                pass
+            else:
+                raise InterfaceError("Prepared select statement response, unexpected part kind %d." % part.kind)
+
     def _handle_result_metadata(self, result_metadata):
         description = []
         column_types = []
@@ -287,66 +317,6 @@ class Cursor(object):
 
         return tuple(description), tuple(column_types)
 
-    def _handle_prepared_select(self, parts, result_metadata):
-
-        self.rowcount = -1
-
-        # result metadata
-        self.description, self._column_types = self._handle_result_metadata(result_metadata)
-
-        for part in parts:
-            if part.kind == part_kinds.RESULTSETID:
-                self._resultset_id = part.value
-            elif part.kind == part_kinds.RESULTSET:
-                # Cleanup buffer
-                del self._buffer
-                self._buffer = collections.deque()
-
-                for row in self._unpack_rows(part.payload, part.rows):
-                    self._buffer.append(row)
-
-                self._received_last_resultset_part = part.attribute & 1
-                self._executed = True
-            elif part.kind == part_kinds.STATEMENTCONTEXT:
-                pass
-            else:
-                raise InterfaceError("Prepared select statement response, unexpected part kind %d." % part.kind)
-
-    def _handle_prepared_insert(self, parts):
-        for part in parts:
-            if part.kind == part_kinds.ROWSAFFECTED:
-                self.rowcount = part.values[0]
-            elif part.kind == part_kinds.TRANSACTIONFLAGS:
-                pass
-            elif part.kind == part_kinds.STATEMENTCONTEXT:
-                pass
-            else:
-                raise InterfaceError("Prepared insert statement response, unexpected part kind %d." % part.kind)
-        self._executed = True
-
-    def _handle_select(self, parts):
-        """Handle result from select command"""
-        resultset_metadata, resultset_id, statement_context, result_set = parts
-
-        self.rowcount = -1
-        self.description, self._column_types = self._handle_result_metadata(resultset_metadata)
-
-        self._resultset_id = resultset_id.value
-
-        # Cleanup buffer
-        del self._buffer
-        self._buffer = collections.deque()
-
-        for row in self._unpack_rows(result_set.payload, result_set.rows):
-            self._buffer.append(row)
-
-        self._received_last_resultset_part = result_set.attribute & 1
-        self._executed = True
-
-    def _handle_insert(self, parts):
-        self.rowcount = parts[0].values[0]
-        self.description = None
-
     def _unpack_rows(self, payload, rows):
         for _ in iter_range(rows):
             yield tuple(typ.from_resultset(payload, self.connection) for typ in self._column_types)
@@ -358,22 +328,22 @@ class Cursor(object):
         if size is None:
             size = self.arraysize
 
-        _result = []
-        _missing = size
+        result = []
+        missing = size
 
-        while bool(self._buffer) and _missing > 0:
-            _result.append(self._buffer.popleft())
-            _missing -= 1
+        while bool(self._buffer) and missing > 0:
+            result.append(self._buffer.popleft())
+            missing -= 1
 
-        if _missing == 0 or self._received_last_resultset_part:
+        if missing == 0 or self._received_last_resultset_part:
             # No rows are missing or there are no additional rows
-            return _result
+            return result
 
         request = RequestMessage.new(
             self.connection,
             RequestSegment(
                 message_types.FETCHNEXT,
-                (ResultSetId(self._resultset_id), FetchSize(_missing))
+                (ResultSetId(self._resultset_id), FetchSize(missing))
             )
         )
         response = self.connection.send_request(request)
@@ -383,8 +353,8 @@ class Cursor(object):
 
         resultset_part = response.segments[0].parts[1]
         for row in self._unpack_rows(resultset_part.payload, resultset_part.rows):
-            _result.append(row)
-        return _result
+            result.append(row)
+        return result
 
     def fetchone(self):
         result = self.fetchmany(size=1)

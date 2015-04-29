@@ -81,11 +81,12 @@ class RequestMessage(BaseMessage):
 
 
 class ReplyMessage(BaseMessage):
-
+    """Reply message class"""
     @classmethod
     def unpack_reply(cls, header, payload):
-        """
-        Takes already unpacked header and binary payload of received request reply and creates message instance
+        """Take already unpacked header and binary payload of received request reply and creates message instance
+        :param header: a namedtuple header object providing header information
+        :param payload: payload (BytesIO instance) of message
         """
         reply = cls(
             header.session_id, header.packet_count,
@@ -94,8 +95,6 @@ class ReplyMessage(BaseMessage):
         )
         trace(reply)
         return reply
-
-    # Helper methods
 
     @classmethod
     def header_from_raw_header_data(cls, raw_header):
