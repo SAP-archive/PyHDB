@@ -228,21 +228,6 @@ def test_received_last_resultset_part_resets_after_execute(connection):
 
 
 @pytest.mark.hanatest
-def test_execute_tidies_buffer(connection):
-    cursor = connection.cursor()
-
-    # We execute something but don't use fetchone
-    cursor.execute("SELECT 123 FROM DUMMY")
-    assert len(cursor._buffer) == 1
-    assert cursor._buffer[0] == (123,)
-
-    # We correct cleanup the buffer will keep the wrong row
-    cursor.execute("SELECT 456 FROM DUMMY")
-    assert len(cursor._buffer) == 1
-    assert cursor._buffer[0] == (456,)
-
-
-@pytest.mark.hanatest
 @pytest.mark.parametrize("method", [
     'fetchone',
     'fetchall',

@@ -183,6 +183,16 @@ class ResultSet(Part):
     def unpack_data(cls, argument_count, payload):
         return payload, argument_count
 
+    def unpack_rows(self, column_types, connection):
+        """Unpack rows for data (from a select statement) from payload and yield a single row at a time.
+        :param column_types: a tuple of column descriptors
+               e.g. (<class 'pyhdb.protocol.types.String'>, <class 'pyhdb.protocol.types.ClobType'>)
+        :param connection: a db connection object
+        :returns: a generator object
+        """
+        for _ in iter_range(self.num_rows):
+            yield tuple(typ.from_resultset(self.payload, connection) for typ in column_types)
+
 
 class Error(Part):
 

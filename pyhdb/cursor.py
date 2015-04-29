@@ -294,10 +294,7 @@ class Cursor(object):
             if part.kind == part_kinds.RESULTSETID:
                 self._resultset_id = part.value
             elif part.kind == part_kinds.RESULTSET:
-                self._buffer = collections.deque()
-                for row in self._unpack_rows(part.payload, part.num_rows):
-                    self._buffer.append(row)
-
+                self._buffer = part.unpack_rows(self._column_types, self.connection)
                 self._received_last_resultset_part = part.attribute & 1
                 self._executed = True
             elif part.kind in (part_kinds.STATEMENTCONTEXT, part_kinds.RESULTSETMETADATA):
@@ -317,11 +314,15 @@ class Cursor(object):
 
         return tuple(description), tuple(column_types)
 
-    def _unpack_rows(self, payload, rows):
-        for _ in iter_range(rows):
-            yield tuple(typ.from_resultset(payload, self.connection) for typ in self._column_types)
+    # def _unpack_rows(self, payload, rows):
+    #     for _ in iter_range(rows):
+    #         yield tuple(typ.from_resultset(payload, self.connection) for typ in self._column_types)
 
     def fetchmany(self, size=None):
+        """Fetch many rows from select result set.
+        :param size: Number of rows to return. If size is -1 then return all available rows.
+        :returns: list of row records (tuples)
+        """
         self._check_closed()
         if not self._executed:
             raise ProgrammingError("Require execute() first")
@@ -329,13 +330,15 @@ class Cursor(object):
             size = self.arraysize
 
         result = []
-        missing = size
+        cnt = 0
+        while cnt != size:
+            try:
+                result.append(self._buffer.next())
+                cnt += 1
+            except StopIteration:
+                break
 
-        while bool(self._buffer) and missing > 0:
-            result.append(self._buffer.popleft())
-            missing -= 1
-
-        if missing == 0 or self._received_last_resultset_part:
+        if cnt == size or self._received_last_resultset_part:
             # No rows are missing or there are no additional rows
             return result
 
@@ -343,30 +346,31 @@ class Cursor(object):
             self.connection,
             RequestSegment(
                 message_types.FETCHNEXT,
-                (ResultSetId(self._resultset_id), FetchSize(missing))
+                (ResultSetId(self._resultset_id), FetchSize(size - cnt))
             )
         )
         response = self.connection.send_request(request)
 
-        if response.segments[0].parts[1].attribute & 1:
-            self._received_last_resultset_part = True
-
         resultset_part = response.segments[0].parts[1]
-        for row in self._unpack_rows(resultset_part.payload, resultset_part.rows):
-            result.append(row)
+        if resultset_part.attribute & 1:
+            self._received_last_resultset_part = True
+        result = list(resultset_part.unpack_rows(self._column_types, self.connection))
         return result
 
     def fetchone(self):
+        """Fetch one row from select result set.
+        :returns: a single row tuple
+        """
         result = self.fetchmany(size=1)
         if result:
             return result[0]
         return None
 
     def fetchall(self):
-        result = self.fetchmany()
-        while bool(self._buffer) or not self._received_last_resultset_part:
-            result = result + self.fetchmany()
-        return result
+        """Fetch all available rows from select result set.
+        :returns: list of row tuples
+        """
+        return self.fetchmany(size=-1)
 
     def close(self):
         self.connection = None
