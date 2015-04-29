@@ -27,6 +27,7 @@ PARAMETERS = 32           # Parameter data
 AUTHENTICATION = 33       # Authentication data
 CLIENTID = 35             # (undocumented) client id
 STATEMENTCONTEXT = 39     # Statement visibility context
+OUTPUTPARAMETERS = 41     # Output parameter data
 CONNECTOPTIONS = 42       # Connect options
 FETCHSIZE = 45            # Numbers of rows to fetch
 PARAMETERMETADATA = 47    # Parameter metadata (type and length information)

@@ -115,6 +115,7 @@ class Cursor(object):
         self._executed = None
 
         self.rowcount = -1
+        self._column_types = None
         self.description = None
         self.rownumber = None
         self.arraysize = 1
@@ -133,6 +134,7 @@ class Cursor(object):
         :returns: statement_id (of prepared and cached statement)
         """
         self._check_closed()
+        self._column_types = None
 
         request = RequestMessage.new(
             self.connection,
@@ -191,8 +193,10 @@ class Cursor(object):
             elif function_code == function_codes.DDL:
                 # No additional handling is required
                 pass
+            elif function_code == function_codes.DBPROCEDURECALL:
+                self._handle_dbproc_call(parts, prepared_statement._params_metadata) # resultset metadata set in prepare
             else:
-                raise InterfaceError("Invalid or unsupported function code received")
+                raise InterfaceError("Invalid or unsupported function code received: %d" % function_code)
 
     def _execute_direct(self, operation):
         """Execute statements which are not going through 'prepare_statement' (aka 'direct execution').
@@ -229,12 +233,12 @@ class Cursor(object):
         In order to be compatible with Python's DBAPI five parameter styles
         must be supported.
 
-        paramstyle 	Meaning
+        paramstyle	Meaning
         ---------------------------------------------------------
         1) qmark       Question mark style, e.g. ...WHERE name=?
         2) numeric     Numeric, positional style, e.g. ...WHERE name=:1
         3) named       Named style, e.g. ...WHERE name=:name
-        4) format 	   ANSI C printf format codes, e.g. ...WHERE name=%s
+        4) format      ANSI C printf format codes, e.g. ...WHERE name=%s
         5) pyformat    Python extended format codes, e.g. ...WHERE name=%(name)s
 
         Hana's 'prepare statement' feature supports 1) and 2), while 4 and 5
@@ -301,6 +305,22 @@ class Cursor(object):
                 pass
             else:
                 raise InterfaceError("Prepared select statement response, unexpected part kind %d." % part.kind)
+
+    def _handle_dbproc_call(self, parts, parameters_metadata):
+        for part in parts:
+            if part.kind == part_kinds.ROWSAFFECTED:
+                self.rowcount = part.values[0]
+            elif part.kind == part_kinds.TRANSACTIONFLAGS:
+                pass
+            elif part.kind == part_kinds.STATEMENTCONTEXT:
+                pass
+            elif part.kind == part_kinds.OUTPUTPARAMETERS:
+                self._buffer = part.unpack_rows(parameters_metadata, self.connection)
+                self._received_last_resultset_part = True
+                self._executed = True
+            else:
+                raise InterfaceError("Stored procedure call, unexpected part kind %d." % part.kind)
+        self._executed = True
 
     def _handle_result_metadata(self, result_metadata):
         description = []
