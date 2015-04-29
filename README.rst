@@ -219,11 +219,22 @@ Tracing
 For debugging purposes it is sometimes useful to get detailed tracing information about packages sent to hana and
 those received from the database. There are two ways to turn on the print out of tracing information:
 
-1. Set the environment variable HDB_TRACING=1 before starting Python, e.g.
-   ``$> HDB_TRACING=1 python``
+1. Set the environment variable HDB_TRACING=1 before starting Python, e.g. (bash-syntax!):
+
+.. code-block:: bash
+
+   $ HDB_TRACE=1 python
+
 2. Import the pyhdb module and set ``pyhdb.tracing = True``
 
 Then perform some statements on the database and enjoy the output.
+
+To get tracing information when running pytest provide the ``-s`` option:
+
+.. code-block:: bash
+
+    $ HDB_TRACE=1 py.test -s
+
 
 ToDos
 ^^^^^

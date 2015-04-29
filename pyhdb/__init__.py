@@ -15,6 +15,7 @@
 import os
 import logging
 import logging.config
+import ConfigParser
 
 this_dir = os.path.dirname(__file__)
 logging.config.fileConfig(os.path.join(this_dir, 'logging.conf'))
@@ -33,3 +34,47 @@ def connect(host, port, user, password, autocommit=False):
     conn = Connection(host, port, user, password, autocommit)
     conn.connect()
     return conn
+
+
+def from_ini(ini_file, section=None):
+    if not os.path.exists(ini_file):
+        raise RuntimeError('Could not find ini file %s' % ini_file)
+    cp = ConfigParser.ConfigParser()
+    cp.read(ini_file)
+    if not cp.sections():
+        raise RuntimeError('Could not find any section in ini file %s' % ini_file)
+    if section:
+        sec_list = [section]
+    elif len(cp.sections()) == 1:
+        # no section specified - check if there is a single/unique section in the ini file:
+        sec_list = cp.sections()
+    else:
+        # ini_file has more than one section, so try some default names:
+        sec_list = ['hana', 'pytest']
+
+    for sec in sec_list:
+        try:
+            param_values = cp.items(sec)
+        except ConfigParser.NoSectionError:
+            continue
+        params = dict(param_values)
+        break
+    else:
+        raise RuntimeError('Could not guess which section to use for hana credentials from %s' % ini_file)
+
+    # Parameters can be named like 'hana_user' (e.g. pytest.ini) or just 'user' (other ini's).
+    # Remove the 'hana_' prefix so that parameter names match the arguments of the pyhdb.connect() function.
+
+    def rm_hana_prefix(param):
+        return param[5:] if param.startswith('hana_') else param
+
+    clean_params = {'%s' % rm_hana_prefix(key): val for key, val in params.iteritems()}
+
+    # make actual connection:
+    return connect(**clean_params)
+
+
+# Add from_ini() as attribute to the connect method, so to use it do: pyhdb.connect.from_ini(ini_file)
+connect.from_ini = from_ini
+# ... and cleanup the local namespace:
+del from_ini
