@@ -183,8 +183,11 @@ Stored Procedures
 
 Rudimentary support for Stored Procedures call, scalar parameters only:
 
+The script shall call the stored procedure PROC_ADD2 (source below):
+
  .. code-block:: pycon
 
+    >>> sql_to_prepare = 'call PROC_ADD2 (?, ?, ?, ?)'
     >>> params = {'A':2, 'B':5, 'C':None, 'D': None}
     >>> psid = cursor.prepare(sql_to_prepare)
     >>> ps = cursor.get_prepared_statement(psid)
@@ -193,6 +196,17 @@ Rudimentary support for Stored Procedures call, scalar parameters only:
     >>> for l in result:
     >>>     print l
 
+from the stored procedure:
+
+ .. code-block:: sql
+
+    create procedure PROC_ADD2 (in a int, in b int, out c int, out d char)
+    language sqlscript
+    reads sql data as
+    begin
+        c := :a + :b;
+        d := 'A';
+    end
 
 Transaction handling
 --------------------
