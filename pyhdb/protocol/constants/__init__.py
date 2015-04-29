@@ -30,3 +30,11 @@ DEFAULT_CONNECTION_OPTIONS = {
     "data_format_version": 1,
     "data_format_version2": 1
 }
+
+import function_codes
+import general
+import message_types
+import parameter_direction
+import part_kinds
+import segment_kinds
+import type_codes

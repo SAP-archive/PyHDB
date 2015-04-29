@@ -22,9 +22,9 @@ from types import StringTypes
 from collections import namedtuple
 from weakref import WeakValueDictionary
 ###
-import pyhdb.protocol.constants.part_kinds
 from pyhdb.protocol import types
 from pyhdb.protocol import constants
+from pyhdb.protocol.types import by_type_code
 from pyhdb.exceptions import InterfaceError, DatabaseError, DataError
 from pyhdb.compat import is_text, iter_range, with_metaclass
 from pyhdb.protocol.headers import ReadLobHeader, PartHeader
@@ -192,6 +192,36 @@ class ResultSet(Part):
         """
         for _ in iter_range(self.num_rows):
             yield tuple(typ.from_resultset(self.payload, connection) for typ in column_types)
+
+
+class OutputParameters(Part):
+    """
+    This part contains the raw result data but without
+    structure informations the unpacking is not possible. In a
+    later step we will unpack the data.
+    """
+    kind = constants.part_kinds.OUTPUTPARAMETERS
+    __tracing_attrs__ = ['header', 'num_rows']
+
+    def __init__(self, payload, num_rows):
+        self.payload = payload
+        self.num_rows = num_rows
+
+    @classmethod
+    def unpack_data(cls, argument_count, payload):
+        return payload, argument_count
+
+    def unpack_rows(self, parameters_metadata, connection):
+        """Unpack output or input/output parameters from the stored procedure call result
+        :parameters_metadata: a stored procedure parameters metadata
+        :returns: parameter values
+        """
+        values = []
+        for param in parameters_metadata:
+            # Unpack OUT or INOUT parameters' values
+            if param.iotype != constants.parameter_direction.IN:
+                values.append( by_type_code[param.datatype].from_resultset(self.payload) )
+        yield tuple(values)
 
 
 class Error(Part):
@@ -537,8 +567,8 @@ class ParameterMetadata(Part):
                 param_id = payload.read(length).decode('utf-8')
                 payload.seek(current_pos)
             values.append(param_md_tuple(mode, datatype, iotype, param_id, length, fraction))
-        for v in values:
-            print v
+        #for v in values:
+        #    print v
         return tuple(values),
 
 

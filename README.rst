@@ -12,6 +12,8 @@ Table of contents
 * `Getting started <#getting-started>`_
 * `Establish a database connection <#establish-a-database-connection>`_
 * `Cursor object <#cursor-object>`_
+* `Large Objects (LOBs) <#lobs>`_
+* `Stored Procedures <#stored-procedures>`_
 * `Transaction handling <#transaction-handling>`_
 * `Contribute <#contribute>`_
 
@@ -176,6 +178,35 @@ as strings or LOB instances:
           This limitation does however not apply when reading LOB data from the database.
 
 
+Stored Procedures
+^^^^^^^^^^^^^^^^^
+
+Rudimentary support for Stored Procedures call, scalar parameters only:
+
+The script shall call the stored procedure PROC_ADD2 (source below):
+
+ .. code-block:: pycon
+
+    >>> sql_to_prepare = 'call PROC_ADD2 (?, ?, ?, ?)'
+    >>> params = {'A':2, 'B':5, 'C':None, 'D': None}
+    >>> psid = cursor.prepare(sql_to_prepare)
+    >>> ps = cursor.get_prepared_statement(psid)
+    >>> cursor.execute_prepared(ps, [params])
+    >>> result = cursor.fetchall()
+    >>> for l in result:
+    >>>     print l
+
+from the stored procedure:
+
+ .. code-block:: sql
+
+    create procedure PROC_ADD2 (in a int, in b int, out c int, out d char)
+    language sqlscript
+    reads sql data as
+    begin
+        c := :a + :b;
+        d := 'A';
+    end
 
 Transaction handling
 --------------------
