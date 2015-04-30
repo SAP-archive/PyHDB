@@ -374,7 +374,7 @@ class Cursor(object):
         resultset_part = response.segments[0].parts[1]
         if resultset_part.attribute & 1:
             self._received_last_resultset_part = True
-        result = list(resultset_part.unpack_rows(self._column_types, self.connection))
+        result.extend(resultset_part.unpack_rows(self._column_types, self.connection))
         return result
 
     def fetchone(self):
@@ -386,11 +386,17 @@ class Cursor(object):
             return result[0]
         return None
 
+    FETCHALL_BLOCKSIZE = 1024
+
     def fetchall(self):
         """Fetch all available rows from select result set.
         :returns: list of row tuples
         """
-        return self.fetchmany(size=sys.maxint)
+        result = r = self.fetchmany(size=self.FETCHALL_BLOCKSIZE)
+        while len(r) == self.FETCHALL_BLOCKSIZE or not self._received_last_resultset_part:
+            r = self.fetchmany(size=self.FETCHALL_BLOCKSIZE)
+            result.extend(r)
+        return result
 
     def close(self):
         self.connection = None
