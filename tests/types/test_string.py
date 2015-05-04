@@ -22,6 +22,8 @@ from pyhdb.exceptions import InterfaceError
 from pyhdb.compat import byte_type
 
 
+# ########################## Test value unpacking #####################################
+
 @pytest.mark.parametrize("input,expected", [
     (b"\xFF", None),
     (b"\x0B\x48\x65\x6C\x6C\x6F\x20\x57\x6F\x72\x6C\x64", "Hello World"),
@@ -79,3 +81,28 @@ def test_unpack_very_long_binary():
 ])
 def test_escape_binary(input, expected):
     assert types.Binary.to_sql(input) == expected
+
+
+# ########################## Test value packing #####################################
+
+@pytest.mark.parametrize("input,expected", [
+    (None, b"\x08\xFF", ),
+    ('123', b"\x08\x03123"),       # convert an integer into its string representation
+    ("Hello World", b"\x08\x0B\x48\x65\x6C\x6C\x6F\x20\x57\x6F\x72\x6C\x64"),
+])
+def test_pack_string(input, expected):
+    assert types.String.prepare(input) == expected
+
+
+def test_pack_long_string():
+    text = b'\xe6\x9c\xb1' * 3500
+    expected = b"\x08\xF6\x04\x29" + text
+    assert types.String.prepare(text.decode('cesu-8')) == expected
+
+
+def test_pack_very_long_string():
+    text = b'\xe6\x9c\xb1' * 35000
+    expected = b"\x08\xF7\x28\x9a\x01\x00" + text
+    assert types.String.prepare(text.decode('cesu-8')) == expected
+
+

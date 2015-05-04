@@ -11,7 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import absolute_import
 
+import types as py_types
 import re
 import struct
 import binascii
@@ -248,19 +250,22 @@ class String(Type):
         pfield = struct.pack('b', type_code)
         if value is None:
             # length indicator
-            pfield += struct.pack('b', 255)
+            pfield += struct.pack('B', 255)
         else:
+            if not isinstance(value, py_types.StringTypes):
+                # Value is provided e.g. as integer, but a string is actually required. Try proper casting into string:
+                value = text_type(value)
             value = value.encode('cesu-8')
             length = len(value)
             # length indicator
             if length <= 245:
-                pfield += struct.pack('b', length)
+                pfield += struct.pack('B', length)
             elif length <= 32767:
-                pfield += struct.pack('b', 246)
-                pfield += struct.pack('h', length)
+                pfield += struct.pack('B', 246)
+                pfield += struct.pack('H', length)
             else:
-                pfield += struct.pack('b', 247)
-                pfield += struct.pack('i', length)
+                pfield += struct.pack('B', 247)
+                pfield += struct.pack('I', length)
             pfield += value
         return pfield
 
