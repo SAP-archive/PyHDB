@@ -19,6 +19,8 @@ import pytest
 from pyhdb.protocol import types
 
 
+# ########################## Test value unpacking #####################################
+
 @pytest.mark.parametrize("input,expected", [
     (b'\x90\x0C\xD8\x59', time(16, 12, 23)),
     (b"\x00\x00\x00\x00", None),
@@ -79,3 +81,13 @@ def test_escape_timestamp(input, expected):
 ])
 def test_to_daydate(input, expected):
     assert types.Date.to_daydate(input) == expected
+
+
+# ########################## Test value packing #####################################
+
+@pytest.mark.parametrize("input,expected", [
+    (datetime(2014, 8, 25, 9, 47, 3, 2000), b'\x10\xDE\x87\x07\x19\x89\x2F\xba\x0b'),
+])
+def test_pack_timestamp(input, expected):
+        assert types.Timestamp.prepare(input) == expected
+
