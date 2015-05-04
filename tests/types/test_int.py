@@ -20,6 +20,8 @@ import pytest
 from pyhdb.protocol import types
 
 
+# ########################## Test value unpacking #####################################
+
 @pytest.mark.parametrize("input,expected", [
     (b"\x01\x15\xCD\x5B\x07", 123456789),
     (b"\x01\xB1\x68\xDE\x3A", 987654321),
@@ -110,3 +112,75 @@ def test_unpack_real(input, expected):
 def test_unpack_double(input, expected):
     input = BytesIO(input)
     assert types.Double.from_resultset(input) == expected
+
+
+# ########################## Test value packing #####################################
+
+@pytest.mark.parametrize("input,expected", [
+    (123456789, b"\x01\x15\xCD\x5B\x07"),
+    ('123456789', b"\x01\x15\xCD\x5B\x07"),    # also ensure that strings are accepted
+    (u'123456789', b"\x01\x15\xCD\x5B\x07"),   # also ensure that unicodes are accepted
+    (987654321, b"\x01\xB1\x68\xDE\x3A"),
+    (None, b"\x00"),
+])
+def test_pack_int(input, expected):
+    types.Int.prepare(input) == expected
+
+
+@pytest.mark.parametrize("input,expected", [
+    (0, b"\x01\x00"),
+    (1, b"\x01\x01"),
+    (123, b"\x01\x7B"),
+    ('123', b"\x01\x7B"),
+    (u'123', b"\x01\x7B"),
+    (255, b"\x01\xFF"),
+    (None, b"\x00"),
+])
+def test_pack_tinyint(input, expected):
+    types.TinyInt.prepare(input) == expected
+
+
+@pytest.mark.parametrize("input,expected", [
+    (12345, b"\x01\x39\x30"),
+    (-12345, b"\x01\xC7\xCF"),
+    ('-12345', b"\x01\xC7\xCF"),
+    (u'-12345', b"\x01\xC7\xCF"),
+    (None, b"\x00"),
+])
+def test_pack_smallint(input, expected):
+    types.SmallInt.prepare(input) == expected
+
+
+@pytest.mark.parametrize("input,expected", [
+    (2**32, b"\x01\x00\x00\x00\x00\x01\x00\x00\x00"),
+    (-2**32, b"\x01\x00\x00\x00\x00\xFF\xFF\xFF\xFF"),
+    ('4294967296', b"\x01\x00\x00\x00\x00\xFF\xFF\xFF\xFF"),
+    (u'4294967296', b"\x01\x00\x00\x00\x00\xFF\xFF\xFF\xFF"),
+    (None, b"\x00"),
+])
+def test_pack_bigint(input, expected):
+    types.BigInt.prepare(input) == expected
+
+
+#
+# NOTE: packing for floats and doubles not yet implementd
+#
+# @pytest.mark.parametrize("input,expected", [
+#     (float("10.119999885559082"), b"\x85\xEB\x21\x41"),
+#     (float("-10.119999885559082"), b"\x85\xEB\x21\xC1"),
+#     ("-10.119999885559082", b"\x85\xEB\x21\xC1"),
+#     (u"-10.119999885559082", b"\x85\xEB\x21\xC1"),
+#     (None, b"\xFF\xFF\xFF\xFF"),
+# ])
+# def test_pack_real(input, expected):
+#     types.Real.prepare(input) == expected
+#
+#
+# @pytest.mark.parametrize("input,expected", [
+#     (float("10.12"), b"\x3D\x0A\xD7\xA3\x70\x3D\x24\x40"),
+#     (float("-10.12"), b"\x3D\x0A\xD7\xA3\x70\x3D\x24\xC0"),
+#     (None, b"\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF"),
+# ])
+# def test_pack_double(input, expected):
+#     types.Double.prepare(input) == expected
+#

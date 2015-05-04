@@ -110,7 +110,7 @@ class _IntType(Type):
             pfield = struct.pack('b', 0)
         else:
             pfield = struct.pack('b', cls.type_code)
-            pfield += cls._struct.pack(value)
+            pfield += cls._struct.pack(int(value))
         return pfield
 
 
