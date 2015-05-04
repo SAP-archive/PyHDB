@@ -387,6 +387,7 @@ class Timestamp(Type):
 
     type_code = type_codes.TIMESTAMP
     python_type = datetime.datetime
+    _struct = struct.Struct("<HBBBBH")
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
@@ -401,6 +402,17 @@ class Timestamp(Type):
     @classmethod
     def to_sql(cls, value):
         return "'%s.%s'" % (value.strftime("%Y-%m-%d %H:%M:%S"), value.microsecond)
+
+    @classmethod
+    def prepare(cls, value):
+        """Pack datetime value into proper binary format"""
+        pfield = struct.pack('b', cls.type_code)
+        millisecond = int(round(value.second * 1000 + value.microsecond / 1000.))
+        year = value.year | 0x8000  # for some unknown reasons year has to be bit-or'ed with 0x8000
+        month = value.month - 1     # for some unknown reasons HANA counts months starting from zero
+        hour = value.hour | 0x80    # for some unknown reasons hour has to be bit-or'ed with 0x80
+        pfield += cls._struct.pack(year, month, value.day, hour, value.minute, millisecond)
+        return pfield
 
 
 class MixinLobType(object):
