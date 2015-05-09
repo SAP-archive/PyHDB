@@ -70,6 +70,7 @@ class RequestSegment(BaseSegment):
     segment_kind = segment_kinds.REQUEST
     header_struct = struct.Struct(BaseSegment.base_header_struct_fmt + 'bbbb8x')  # + I1 I1 I1 I1 x[8]
     header_size = header_struct.size
+    max_segment_payload_size = MAX_SEGMENT_SIZE - header_size
 
     def __init__(self, message_type, parts=None, header=None):
         super(RequestSegment, self).__init__(parts, header)
@@ -89,7 +90,7 @@ class RequestSegment(BaseSegment):
 
     def build_payload(self, payload):
         """Build payload of all parts and write them into the payload buffer"""
-        remaining_size = MAX_SEGMENT_SIZE - self.header_size
+        remaining_size = self.max_segment_payload_size
 
         for part in self.parts:
             part_payload = part.pack(remaining_size)

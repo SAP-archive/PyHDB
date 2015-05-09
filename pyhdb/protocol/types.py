@@ -417,6 +417,8 @@ class Timestamp(Type):
 
 class MixinLobType(object):
     """Mixin class for all LOB types"""
+    type_code = None
+
     @classmethod
     def from_resultset(cls, payload, connection=None):
         # to avoid circular import the 'lobs' module has to be imported here:
@@ -424,12 +426,14 @@ class MixinLobType(object):
         return lobs.from_payload(cls.type_code, payload, connection)
 
     @classmethod
-    def prepare(cls, value, length=0, position=0):
+    def prepare(cls, value, length=0, position=0, is_last_data=True):
         """Prepare Lob header.
-        Note that the actual lob data is NOT written here but appended after the parameter block!
+        Note that the actual lob data is NOT written here but appended after the parameter block for each row!
         """
         hstruct = WriteLobHeader.header_struct
-        options = WriteLobHeader.LOB_OPTION_DATAINCLUDED | WriteLobHeader.LOB_OPTION_LASTDATA
+        lob_option_dataincluded = WriteLobHeader.LOB_OPTION_DATAINCLUDED if length > 0 else 0
+        lob_option_lastdata = WriteLobHeader.LOB_OPTION_LASTDATA if is_last_data else 0
+        options = lob_option_dataincluded | lob_option_lastdata
         pfield = hstruct.pack(cls.type_code, options, length, position)
         return pfield
 

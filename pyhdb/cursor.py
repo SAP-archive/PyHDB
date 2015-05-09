@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
+from itertools import izip
 import collections
+###
 from pyhdb.protocol.message import RequestMessage
 from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.types import escape_values, by_type_code
-from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, Parameters
+from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, Parameters, WriteLobRequest
 from pyhdb.protocol.constants import message_types, function_codes, part_kinds
 from pyhdb.exceptions import ProgrammingError, InterfaceError, DatabaseError
 
@@ -56,14 +57,13 @@ class PreparedStatement(object):
                Example: (ParameterMetadata(options=2, datatype=26, mode=1, id=0, length=24, fraction=0),)
         :param result_metadata_part: can be None
         """
-
         self._connection = connection
         self.statement_id = statement_id
         self._params_metadata = params_metadata
         self.result_metadata_part = result_metadata_part
-        self._pushed_row_params = []
         self._multi_row_parameters = None
-        self.end_of_data = False
+        self._num_rows = None
+        self._iter_row_count = None
 
     def prepare_parameters(self, multi_row_parameters):
         """ Attribute sql parameters with meta data for a prepared statement.
@@ -71,46 +71,46 @@ class PreparedStatement(object):
         :param multi_row_parameters: A list/tuple containing list/tuples of parameters (for multiple rows)
         :returns: A generator producing parameters attributed with meta data for one sql statement (a row) at a time
         """
-        self.end_of_data = False
-        self._multi_row_parameters = iter(multi_row_parameters)
+        self._multi_row_parameters = multi_row_parameters
+        self._num_rows = len(multi_row_parameters)
+        self._iter_row_count = 0
         return self
+
+    def __repr__(self):
+        return '<PreparedStatement id=%r>' % self.statement_id
 
     def __iter__(self):
         return self
 
     def __nonzero__(self):
-        return not self.end_of_data
+        return self._iter_row_count < self._num_rows
 
     def next(self):
-        if self.end_of_data:
+        if self._iter_row_count == self._num_rows:
             raise StopIteration()
-        if self._pushed_row_params:
-            row_params = self._pushed_row_params.pop()
-        else:
-            try:
-                parameters = self._multi_row_parameters.next()
-            except StopIteration:
-                self.end_of_data = True
-                raise
-            if not isinstance(parameters, (list, tuple, dict)):
-                raise ProgrammingError("Prepared statement parameters supplied as %s, shall be list, tuple or dict." %
-                                       type(parameters).__name__)
 
-            if len(parameters) != len(self._params_metadata):
-                raise ProgrammingError("Prepared statement parameters expected %d supplied %d." %
-                                       (len(self._params_metadata), len(parameters)))
-            row_params = [self.ParamTuple(p.id, p.datatype, p.length, parameters[p.id]) for p in self._params_metadata]
+        parameters = self._multi_row_parameters[self._iter_row_count]
+        if not isinstance(parameters, (list, tuple, dict)):
+            raise ProgrammingError("Prepared statement parameters supplied as %s, shall be list, tuple or dict." %
+                                   type(parameters).__name__)
+
+        if len(parameters) != len(self._params_metadata):
+            raise ProgrammingError("Prepared statement parameters expected %d supplied %d." %
+                                   (len(self._params_metadata), len(parameters)))
+        row_params = [self.ParamTuple(p.id, p.datatype, p.length, parameters[p.id]) for p in self._params_metadata]
+        self._iter_row_count += 1
         return row_params
 
-    def push_back(self, row_params):
-        self._pushed_row_params.append(row_params)
+    def back(self):
+        assert self._iter_row_count > 0, 'already stepped back to beginning of iterator data'
+        self._iter_row_count -= 1
 
 
 class Cursor(object):
     """Database cursor class"""
     def __init__(self, connection):
         self.connection = connection
-        self._buffer = collections.deque()
+        self._buffer = iter([])
         self._received_last_resultset_part = False
         self._executed = None
 
@@ -135,6 +135,7 @@ class Cursor(object):
         """
         self._check_closed()
         self._column_types = None
+        statement_id = params_metadata = result_metadata_part = None
 
         request = RequestMessage.new(
             self.connection,
@@ -144,8 +145,6 @@ class Cursor(object):
             )
         )
         response = self.connection.send_request(request)
-
-        statement_id = params_metadata = result_metadata_part = None
 
         for part in response.segments[0].parts:
             if part.kind == part_kinds.STATEMENTID:
@@ -182,14 +181,14 @@ class Cursor(object):
                      Parameters(parameters))
                 )
             )
-            response = self.connection.send_request(request)
+            reply = self.connection.send_request(request)
 
-            parts = response.segments[0].parts
-            function_code = response.segments[0].function_code
+            parts = reply.segments[0].parts
+            function_code = reply.segments[0].function_code
             if function_code == function_codes.SELECT:
                 self._handle_select(parts, prepared_statement.result_metadata_part)
             elif function_code in function_codes.DML:
-                self._handle_insert(parts)
+                self._handle_upsert(parts, request.segments[0].parts[1].unwritten_lobs)
             elif function_code == function_codes.DDL:
                 # No additional handling is required
                 pass
@@ -210,14 +209,14 @@ class Cursor(object):
                 Command(operation)
             )
         )
-        response = self.connection.send_request(request)
+        reply = self.connection.send_request(request)
 
-        parts = response.segments[0].parts
-        function_code = response.segments[0].function_code
+        parts = reply.segments[0].parts
+        function_code = reply.segments[0].function_code
         if function_code == function_codes.SELECT:
             self._handle_select(parts, parts[0])
         elif function_code in function_codes.DML:
-            self._handle_insert(parts)
+            self._handle_upsert(parts)
         elif function_code == function_codes.DDL:
             # No additional handling is required
             pass
@@ -279,18 +278,48 @@ class Cursor(object):
         # Return cursor object:
         return self
 
-    def _handle_insert(self, parts):
+    def _handle_upsert(self, parts, unwritten_lobs=()):
+        """Handle reply messages from INSERT or UPDATE statements"""
         self.description = None
+        self._received_last_resultset_part = True  # set to 'True' so that cursor.fetch*() returns just empty list
+
         for part in parts:
             if part.kind == part_kinds.ROWSAFFECTED:
                 self.rowcount = part.values[0]
             elif part.kind in (part_kinds.TRANSACTIONFLAGS, part_kinds.STATEMENTCONTEXT):
                 pass
+            elif part.kind == part_kinds.WRITELOBREPLY:
+                # This part occurrs after lobs have been submitted not at all or only partially during an insert.
+                # In this case the parameter part of the Request message contains a list called 'unwritten_lobs'
+                # with LobBuffer instances.
+                # Those instances are in the same order as 'locator_ids' received in the reply message. These IDs
+                # are then used to deliver the missing LOB data to the server via WRITE_LOB_REQUESTs.
+                for lob_buffer, lob_locator_id in izip(unwritten_lobs, part.locator_ids):
+                    # store locator_id in every lob buffer instance for later reference:
+                    lob_buffer.locator_id = lob_locator_id
+                self._perform_lob_write_requests(unwritten_lobs)
             else:
                 raise InterfaceError("Prepared insert statement response, unexpected part kind %d." % part.kind)
         self._executed = True
 
+    def _perform_lob_write_requests(self, unwritten_lobs):
+        """After sending incomplete LOB data during an INSERT or UPDATE this method will be called.
+        It sends missing LOB data possibly in multiple LOBWRITE requests for all LOBs.
+        :param unwritten_lobs: A deque list of LobBuffer instances containing LOB data.
+               Those buffers have been assembled in the parts.Parameter.pack_lob_data() method.
+        """
+        while unwritten_lobs:
+            request = RequestMessage.new(
+                self.connection,
+                RequestSegment(
+                    message_types.WRITELOB,
+                    WriteLobRequest(unwritten_lobs)
+                )
+            )
+            self.connection.send_request(request)
+
     def _handle_select(self, parts, result_metadata):
+        """Handle reply messages from SELECT statements"""
         self.rowcount = -1
         self.description, self._column_types = self._handle_result_metadata(result_metadata)
 
@@ -307,6 +336,7 @@ class Cursor(object):
                 raise InterfaceError("Prepared select statement response, unexpected part kind %d." % part.kind)
 
     def _handle_dbproc_call(self, parts, parameters_metadata):
+        """Handle reply messages from STORED PROCEDURE statements"""
         for part in parts:
             if part.kind == part_kinds.ROWSAFFECTED:
                 self.rowcount = part.values[0]
@@ -333,10 +363,6 @@ class Cursor(object):
             column_types.append(by_type_code[column[1]])
 
         return tuple(description), tuple(column_types)
-
-    # def _unpack_rows(self, payload, rows):
-    #     for _ in iter_range(rows):
-    #         yield tuple(typ.from_resultset(payload, self.connection) for typ in self._column_types)
 
     def fetchmany(self, size=None):
         """Fetch many rows from select result set.

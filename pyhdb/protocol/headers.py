@@ -34,7 +34,7 @@ ReplySegmentHeader = collections.namedtuple(
 
 PartHeader = collections.namedtuple(
     'PartHeader',
-    'part_kind, part_attributes, argument_count, bigargument_count, buffer_length, buffer_size')
+    'part_kind, part_attributes, argument_count, bigargument_count, payload_size, remaining_buffer_size')
 
 
 class BaseLobheader(object):

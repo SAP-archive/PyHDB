@@ -46,3 +46,21 @@ def dehexlify(hx):
         'ab\x04ce'
     """
     return binascii.unhexlify(hx.replace(' ', ''))
+
+
+def abbrev_humanhexlify(data , n):
+    """Hexlify given data with 1 space char btw hex values for easier reading for humans
+    Abbreviate to n-chars. If original data was longer, add '...' to end of string.
+    Input like
+        data='ab\x04ce', n=10
+    becomes
+        '61 62 04 63 65'
+
+     Input like
+        data='ab\x04ce', n=3
+    becomes
+        '61 62 04 ...'
+
+    """
+    tail = ' ...' if len(data) > n else ''
+    return humanhexlify(data[:n]) + tail

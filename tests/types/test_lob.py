@@ -23,7 +23,7 @@ from pyhdb.protocol import parts
 from pyhdb.protocol.types import type_codes
 from pyhdb.exceptions import DataError
 from pyhdb.compat import PY2
-
+from pyhdb.protocol.constants.general import MAX_MESSAGE_SIZE
 
 # #############################################################################################################
 #                         Basic LOB creation from ascii and unicode strings
@@ -525,8 +525,6 @@ def test_insert_single_object_nclob_row(connection, test_lob_table):
     assert nclob.read() == nclob_data
 
 
-###
-
 @pytest.mark.hanatest
 def test_insert_single_blob_and_clob_row(connection, test_lob_table):
     """Insert a single row providing blob (as string) and clob (as LOB obj) (argument order: blob, name, clob)"""
@@ -580,13 +578,13 @@ def test_insert_many_clob_and_nclob_rows(connection, test_lob_table):
 
 
 @pytest.mark.hanatest
-def test_insert_to_large_data_raises(connection, test_lob_table):
+def test_insert_too_large_data_raises(connection, test_lob_table):
     """Trying to insert data within one single row beyond MAX_MESSAGE_SIZE raises a DataError"""
     # This is actually not really a lob problem, it can also occur with many large strings in a row.
     # However uploading lobs with a WriteLob request has not yet been implemented, so providing
     # a large lob also triggers this error.
     cursor = connection.cursor()
-    large_blob_data = parts.MAX_MESSAGE_SIZE * u'λ'
+    large_blob_data = MAX_MESSAGE_SIZE * u'λ'
     with pytest.raises(DataError):
         cursor.execute("insert into %s (name, fblob) values (:1, :2)" % TABLE, ['bigblob', large_blob_data])
 
