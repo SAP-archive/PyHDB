@@ -19,13 +19,11 @@ from io import BytesIO
 ###
 from pyhdb.protocol.constants import part_kinds
 from pyhdb.compat import iter_range
-from pyhdb.protocol.constants.general import MAX_MESSAGE_SIZE, MESSAGE_HEADER_SIZE
+from pyhdb.protocol import constants
 from pyhdb.protocol.parts import Part
 from pyhdb.protocol.headers import RequestSegmentHeader, ReplySegmentHeader
 from pyhdb.protocol.constants import segment_kinds
 
-
-MAX_SEGMENT_SIZE = MAX_MESSAGE_SIZE - MESSAGE_HEADER_SIZE
 
 recv_log = logging.getLogger('receive')
 debug = recv_log.debug
@@ -70,7 +68,7 @@ class RequestSegment(BaseSegment):
     segment_kind = segment_kinds.REQUEST
     header_struct = struct.Struct(BaseSegment.base_header_struct_fmt + 'bbbb8x')  # + I1 I1 I1 I1 x[8]
     header_size = header_struct.size
-    max_segment_payload_size = MAX_SEGMENT_SIZE - header_size
+    MAX_SEGMENT_PAYLOAD_SIZE = constants.MAX_SEGMENT_SIZE - header_size
 
     def __init__(self, message_type, parts=None, header=None):
         super(RequestSegment, self).__init__(parts, header)
@@ -90,7 +88,7 @@ class RequestSegment(BaseSegment):
 
     def build_payload(self, payload):
         """Build payload of all parts and write them into the payload buffer"""
-        remaining_size = self.max_segment_payload_size
+        remaining_size = self.MAX_SEGMENT_PAYLOAD_SIZE
 
         for part in self.parts:
             part_payload = part.pack(remaining_size)
@@ -126,7 +124,7 @@ class ReplySegment(BaseSegment):
     Reqply segment class - used when receiving messages from HANA db
     """
     segment_kind = segment_kinds.REPLY
-    header_struct = struct.Struct(BaseSegment.base_header_struct_fmt + 'bxh8x')  # + I1 x I2 x[8]
+    header_struct = struct.Struct(BaseSegment.base_header_struct_fmt + 'bxh8x')  # basesize + I1 x I2 x[8]
     header_size = header_struct.size
 
     def __init__(self, function_code, parts=None, header=None):

@@ -14,7 +14,7 @@
 
 from io import BytesIO
 from pyhdb.protocol.parts import ConnectOptions
-from pyhdb.protocol.segments import MAX_SEGMENT_SIZE
+from pyhdb.protocol import constants
 
 
 def test_pack_default_connection_options():
@@ -37,7 +37,7 @@ def test_pack_default_connection_options():
         "data_format_version2": 1
     }
 
-    arguments, payload = ConnectOptions(options).pack_data(MAX_SEGMENT_SIZE)
+    arguments, payload = ConnectOptions(options).pack_data(constants.MAX_SEGMENT_SIZE)
     assert arguments == 8
     # Test note: We can test again the cncatenated hex string
     # because sometimes the order of the dict elements is different

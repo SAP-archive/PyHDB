@@ -31,6 +31,8 @@ DEFAULT_CONNECTION_OPTIONS = {
     "data_format_version2": 1
 }
 
+from general import MAX_MESSAGE_SIZE, MAX_SEGMENT_SIZE
+
 import function_codes
 import general
 import message_types
