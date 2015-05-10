@@ -16,33 +16,22 @@ import pytest
 
 from pyhdb.cursor import format_operation
 from pyhdb.exceptions import ProgrammingError
+import tests.helper
+
+TABLE = 'PYHDB_TEST_1'
+TABLE_FIELDS = 'TEST VARCHAR(255)'
 
 
 @pytest.fixture
 def test_table_1(request, connection):
     """Fixture to create table for testing, and dropping it after test run"""
-    cursor = connection.cursor()
-    if exists_table(connection, "PYHDB_TEST_1"):
-        cursor.execute('DROP TABLE "PYHDB_TEST_1"')
-
-    assert not exists_table(connection, "PYHDB_TEST_1")
-    cursor.execute('CREATE TABLE "PYHDB_TEST_1" ("TEST" VARCHAR(255))')
-    if not exists_table(connection, "PYHDB_TEST_1"):
-        pytest.skip("Couldn't create table PYHDB_TEST_1")
-        return
-
-    def _close():
-        cursor.execute('DROP TABLE "PYHDB_TEST_1"')
-    request.addfinalizer(_close)
-    return 'hello'
+    tests.helper.create_table_fixture(request, connection, TABLE, TABLE_FIELDS)
 
 
 @pytest.fixture
 def content_table_1(request, connection):
     """Additional fixture to test_table_1, inserts some rows for testing"""
     cursor = connection.cursor()
-    if not exists_table(connection, "PYHDB_TEST_1"):
-        raise RuntimeError('Could not find table PYHDB_TEST_1')
     cursor.execute("insert into PYHDB_TEST_1 values('row1')")
     cursor.execute("insert into PYHDB_TEST_1 values('row2')")
     cursor.execute("insert into PYHDB_TEST_1 values('row3')")
@@ -169,7 +158,7 @@ def test_cursor_execute_with_params5(connection, test_table_1, content_table_1):
     # Note: use fetchall() to check that only one row gets returned
     cursor = connection.cursor()
 
-    sql = 'select test from PYHDB_TEST_1 where test=%(test)s'
+    sql = 'select test from {} where test=%(test)s'.format(TABLE)
     # correct way:
     assert cursor.execute(sql, {'test': 'row2'}).fetchall() == [('row2',)]
     # also correct way, additional dict value should just be ignored
@@ -180,36 +169,29 @@ def test_cursor_execute_with_params5(connection, test_table_1, content_table_1):
 @pytest.mark.hanatest
 def test_cursor_insert_commit(connection, test_table_1):
     cursor = connection.cursor()
-    cursor.execute("SELECT COUNT(*) FROM PYHDB_TEST_1")
+    cursor.execute("SELECT COUNT(*) FROM %s" % TABLE)
     assert cursor.fetchone() == (0,)
 
-    cursor.execute("INSERT INTO PYHDB_TEST_1 VALUES('Hello World')")
+    cursor.execute("INSERT INTO %s VALUES('Hello World')" % TABLE)
     assert cursor.rowcount == 1
 
-    cursor.execute("SELECT COUNT(*) FROM PYHDB_TEST_1")
+    cursor.execute("SELECT COUNT(*) FROM %s" % TABLE)
     assert cursor.fetchone() == (1,)
     connection.commit()
-
-
-def exists_table(connection, name):
-    cursor = connection.cursor()
-    cursor.execute('SELECT 1 FROM "SYS"."TABLES" WHERE "TABLE_NAME" = %s',
-                   (name,))
-    return cursor.fetchone() is not None
 
 
 @pytest.mark.hanatest
 def test_cursor_create_and_drop_table(connection):
     cursor = connection.cursor()
 
-    if exists_table(connection, "PYHDB_TEST_1"):
-        cursor.execute('DROP TABLE "PYHDB_TEST_1"')
+    if tests.helper.exists_table(connection, TABLE):
+        cursor.execute('DROP TABLE "%s"' % TABLE)
 
-    assert not exists_table(connection, "PYHDB_TEST_1")
-    cursor.execute('CREATE TABLE "PYHDB_TEST_1" ("TEST" VARCHAR(255))')
-    assert exists_table(connection, "PYHDB_TEST_1")
+    assert not tests.helper.exists_table(connection, TABLE)
+    cursor.execute('CREATE TABLE "%s" ("TEST" VARCHAR(255))' % TABLE)
+    assert tests.helper.exists_table(connection, TABLE)
 
-    cursor.execute('DROP TABLE "PYHDB_TEST_1"')
+    cursor.execute('DROP TABLE "%s"' % TABLE)
 
 
 @pytest.mark.hanatest
@@ -264,14 +246,14 @@ def test_cursor_executemany_python_expansion(connection, test_table_1):
     cursor = connection.cursor()
 
     cursor.executemany(
-        "INSERT INTO PYHDB_TEST_1 VALUES(%s)",
+        "INSERT INTO {} VALUES(%s)".format(TABLE),
         (
             ("Statement 1",),
             ("Statement 2",)
         )
     )
 
-    cursor.execute("SELECT * FROM PYHDB_TEST_1")
+    cursor.execute("SELECT * FROM %s" % TABLE)
     result = cursor.fetchall()
     assert result == [('Statement 1',), ('Statement 2',)]
 
@@ -281,13 +263,13 @@ def test_cursor_executemany_hana_expansion(connection, test_table_1):
     cursor = connection.cursor()
 
     cursor.executemany(
-        "INSERT INTO PYHDB_TEST_1 VALUES(:1)",
+        "INSERT INTO %s VALUES(:1)" % TABLE,
         (
             ("Statement 1",),
             ("Statement 2",)
         )
     )
 
-    cursor.execute("SELECT * FROM PYHDB_TEST_1")
+    cursor.execute("SELECT * FROM %s" % TABLE)
     result = cursor.fetchall()
     assert result == [('Statement 1',), ('Statement 2',)]

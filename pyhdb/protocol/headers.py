@@ -119,4 +119,4 @@ class ReadLobHeader(BaseLobheader):
         if not self.isnull():
             value += ', charlength: %d, bytelength: %d, locator_id: %r, chunklength: %d' % \
                 (self.char_length, self.byte_length, self.locator_id, self.chunk_length)
-        return value
+        return '<ReadLobHeader %s>' % value

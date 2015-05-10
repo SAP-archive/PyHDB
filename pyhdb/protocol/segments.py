@@ -46,20 +46,6 @@ class BaseSegment(object):
             self.parts = [parts]
         self.header = header
 
-    def write_trace(self, tracer):
-        tracer.writeln(u'%s  = {' % self.__class__.__name__)
-        tracer.incr()
-        tracer.writeln(u'%s,' % str(self.header))
-        tracer.writeln(u'Parts = [')
-        tracer.incr()
-        for parts in self.parts:
-            parts.write_trace(tracer)
-        tracer.decr()
-        tracer.writeln(u']')
-        tracer.decr()
-        tracer.writeln(u'}')
-        return tracer
-
 
 class RequestSegment(BaseSegment):
     """
