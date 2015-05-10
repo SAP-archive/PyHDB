@@ -22,7 +22,9 @@ def trace(trace_obj):
     """
     if pyhdb.tracing:
         t = TraceLogger()
-        print(t.trace(trace_obj))
+        tr = t.trace(trace_obj)
+        print(tr)
+        return tr
 
 
 class TraceLogger(object):

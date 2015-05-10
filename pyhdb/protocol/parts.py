@@ -24,7 +24,7 @@ from collections import namedtuple
 from weakref import WeakValueDictionary
 ###
 import pyhdb
-from pyhdb.lib.stringlib import abbrev_humanhexlify, humanhexlify
+from pyhdb.lib.stringlib import humanhexlify
 from pyhdb.protocol import types
 from pyhdb.protocol import constants
 from pyhdb.protocol.types import by_type_code
@@ -111,8 +111,8 @@ class Part(with_metaclass(PartMeta, object)):
                                  payload_length, remaining_size)
         hdr = self.header_struct.pack(*self.header)
         if pyhdb.tracing:
-            self.trace_header = abbrev_humanhexlify(hdr, 30)
-            self.trace_payload = abbrev_humanhexlify(payload, 30)
+            self.trace_header = humanhexlify(hdr, 30)
+            self.trace_payload = humanhexlify(payload, 30)
         return hdr + payload
 
     def pack_data(self, remaining_size):
@@ -151,7 +151,7 @@ class Part(with_metaclass(PartMeta, object)):
             part.source = 'server'
             if pyhdb.tracing:
                 part.trace_header = humanhexlify(hdr[:part_header.payload_size])
-                part.trace_payload = abbrev_humanhexlify(pl, 30)
+                part.trace_payload = humanhexlify(pl, 30)
             yield part
 
 
