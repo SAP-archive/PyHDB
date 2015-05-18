@@ -34,7 +34,7 @@ ReplySegmentHeader = collections.namedtuple(
 
 PartHeader = collections.namedtuple(
     'PartHeader',
-    'part_kind, part_attributes, argument_count, bigargument_count, buffer_length, buffer_size')
+    'part_kind, part_attributes, argument_count, bigargument_count, payload_size, remaining_buffer_size')
 
 
 class BaseLobheader(object):
@@ -119,4 +119,4 @@ class ReadLobHeader(BaseLobheader):
         if not self.isnull():
             value += ', charlength: %d, bytelength: %d, locator_id: %r, chunklength: %d' % \
                 (self.char_length, self.byte_length, self.locator_id, self.chunk_length)
-        return value
+        return '<ReadLobHeader %s>' % value

@@ -17,6 +17,7 @@
 import pytest
 
 from pyhdb.connection import Connection
+import pyhdb
 
 
 @pytest.mark.hanatest
@@ -55,3 +56,7 @@ def test_set_timeout_without_socket():
     connection = Connection("localhost", 30015, "Fuu", "Bar")
     connection.timeout = 10
     assert connection.timeout == 10
+
+
+def test_make_connection_from_pytest_ini():
+    connection = pyhdb.connect.from_ini('pytest.ini')

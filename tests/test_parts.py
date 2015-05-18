@@ -30,7 +30,7 @@ class DummyPart(Part):
     def __init__(self, zeros=10):
         self.zeros = zeros
 
-    def pack_data(self):
+    def pack_data(self, remaining_size):
         return self.zeros, b"\x00" * self.zeros
 
     @classmethod
@@ -42,8 +42,7 @@ class DummyPart(Part):
 
 class TestBasePart(object):
 
-    @staticmethod
-    def test_pack_dummy_part():
+    def test_pack_dummy_part(self):
         part = DummyPart(10)
         assert part.zeros == 10
 
@@ -60,8 +59,7 @@ class TestBasePart(object):
         assert len(payload) == 16
         assert payload == b"\x00" * 16
 
-    @staticmethod
-    def test_unpack_single_dummy_part():
+    def test_unpack_single_dummy_part(self):
         packed = BytesIO(
             b'\x7F\x00\x0A\x00\x00\x00\x00\x00\x0A\x00\x00\x00\x00'
             b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
@@ -74,8 +72,7 @@ class TestBasePart(object):
         assert isinstance(unpacked, DummyPart)
         assert unpacked.zeros == 10
 
-    @staticmethod
-    def test_unpack_multiple_dummy_parts():
+    def test_unpack_multiple_dummy_parts(self):
         packed = BytesIO(
             b"\x7f\x00\x0a\x00\x00\x00\x00\x00\x0a\x00\x00\x00\xc8\xff\x01"
             b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -97,16 +94,14 @@ class TestBasePart(object):
         assert isinstance(unpacked[2], DummyPart)
         assert unpacked[2].zeros == 18
 
-    @staticmethod
-    def test_invalid_part_header_raises_exception():
+    def test_invalid_part_header_raises_exception(self):
         packed = BytesIO(
             b"\xbb\xff\xaa\x00\x00\x00\x00\x0a\x00\x00\x00\x00\x00\x00\x00"
         )
         with pytest.raises(InterfaceError):
             tuple(Part.unpack_from(packed, 1))
 
-    @staticmethod
-    def test_unpack_unkown_part_raises_exception():
+    def test_unpack_unkown_part_raises_exception(self):
         packed = BytesIO(
             b"\x80\x00\x0a\x00\x00\x00\x00\x00\x0a\x00\x00\x00\x00"
             b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -118,16 +113,14 @@ class TestBasePart(object):
 
 class TestPartMetaClass(object):
 
-    @staticmethod
-    def test_part_kind_mapping():
+    def test_part_kind_mapping(self):
         assert 125 not in PART_MAPPING
 
         class Part125(Part):
             kind = 125
         assert PART_MAPPING[125] == Part125
 
-    @staticmethod
-    def test_part_without_kind_attribute_will_be_not_in_mapping():
+    def test_part_without_kind_attribute_will_be_not_in_mapping(self):
         assert 123 not in PART_MAPPING
 
         class Part123(Part):
@@ -136,16 +129,14 @@ class TestPartMetaClass(object):
         assert 123 not in PART_MAPPING
         assert Part123 not in PART_MAPPING.values()
 
-    @staticmethod
-    def test_part_kind_out_of_range_raises_exception():
+    def test_part_kind_out_of_range_raises_exception(self):
 
         with pytest.raises(InterfaceError):
             class OutOfRangePart(Part):
                 kind = 255
             assert OutOfRangePart not in PART_MAPPING.values()
 
-    @staticmethod
-    def test_part_class_mapping_updates_after_class_left_scope():
+    def test_part_class_mapping_updates_after_class_left_scope(self):
         assert 124 not in PART_MAPPING
 
         class Part124(Part):

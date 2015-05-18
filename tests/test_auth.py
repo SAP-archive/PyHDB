@@ -48,8 +48,7 @@ class TestSCRAMSHA256(object):
     #         b"SCRAMSHA256": auth_manager.client_key
     #     }
 
-    @staticmethod
-    def test_calculate_client_proof(auth_manager):
+    def test_calculate_client_proof(self, auth_manager):
         salt = b"\x80\x96\x4f\xa8\x54\x28\xae\x3a\x81\xac" \
                b"\xd3\xe6\x86\xa2\x79\x33"
         server_key = b"\x41\x06\x51\x50\x11\x7e\x45\x5f\xec\x2f\x03\xf6" \

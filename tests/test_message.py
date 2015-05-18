@@ -30,22 +30,19 @@ class DummySegment(RequestSegment):
 
 class TestRequestRequestMessage(object):
     """Test RequestMessage class"""
-    @staticmethod
-    def test_request_message_init_without_segment():
+    def test_request_message_init_without_segment(self):
         connection = Connection("localhost", 30015, "Fuu", "Bar")
         msg = RequestMessage.new(connection)
-        assert msg.segments == []
+        assert msg.segments == ()
 
-    @staticmethod
-    def test_request_message_init_with_single_segment():
+    def test_request_message_init_with_single_segment(self):
         connection = Connection("localhost", 30015, "Fuu", "Bar")
 
         request_seg = RequestSegment(0)
         msg = RequestMessage.new(connection, request_seg)
-        assert msg.segments == [request_seg]
+        assert msg.segments == (request_seg,)
 
-    @staticmethod
-    def test_request_message_init_with_multiple_segments_as_list():
+    def test_request_message_init_with_multiple_segments_as_list(self):
         connection = Connection("localhost", 30015, "Fuu", "Bar")
 
         request_seg_1 = RequestSegment(0)
@@ -53,8 +50,7 @@ class TestRequestRequestMessage(object):
         msg = RequestMessage.new(connection, [request_seg_1, request_seg_2])
         assert msg.segments == [request_seg_1, request_seg_2]
 
-    @staticmethod
-    def test_request_message_init_with_multiple_segments_as_tuple():
+    def test_request_message_init_with_multiple_segments_as_tuple(self):
         connection = Connection("localhost", 30015, "Fuu", "Bar")
 
         request_seg_1 = RequestSegment(0)
@@ -62,16 +58,16 @@ class TestRequestRequestMessage(object):
         msg = RequestMessage.new(connection, (request_seg_1, request_seg_2))
         assert msg.segments == (request_seg_1, request_seg_2)
 
-    @staticmethod
-    def test_request_message_use_last_session_id():
+    def test_request_message_use_last_session_id(self):
         connection = Connection("localhost", 30015, "Fuu", "Bar")
-        connection.session_id = 1
+        connection.session_id = 3
 
-        msg = RequestMessage.new(connection)
-        assert msg.session_id == connection.session_id
+        msg1 = RequestMessage.new(connection)
+        assert msg1.session_id == connection.session_id
 
         connection.session_id = 5
-        assert msg.session_id == connection.session_id
+        msg2 = RequestMessage.new(connection)
+        assert msg2.session_id == connection.session_id
 
     @mock.patch('pyhdb.connection.Connection.get_next_packet_count', return_value=0)
     def test_request_message_keep_packet_count(self, get_next_packet_count):
@@ -96,8 +92,7 @@ class TestRequestRequestMessage(object):
 
         assert payload.getvalue() == b"\x00" * 10
 
-    @staticmethod
-    def test_pack():
+    def test_pack(self):
         connection = Connection("localhost", 30015, "Fuu", "Bar")
 
         msg = RequestMessage.new(connection, [DummySegment(None)])
@@ -129,8 +124,7 @@ class TestRequestRequestMessage(object):
 
 class TestReplyRequestMessage(object):
 
-    @staticmethod
-    def test_message_use_received_session_id():
+    def test_message_use_received_session_id(self):
         connection = Connection("localhost", 30015, "Fuu", "Bar")
         connection.session_id = 12345
         msg = ReplyMessage(connection.session_id, connection.get_next_packet_count())

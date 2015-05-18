@@ -14,7 +14,7 @@
 
 from io import BytesIO
 from pyhdb.protocol.parts import Authentication
-
+from pyhdb.protocol import constants
 
 def test_pack_data():
     part = Authentication(
@@ -29,7 +29,7 @@ def test_pack_data():
         }
     )
 
-    arguments, payload = part.pack_data()
+    arguments, payload = part.pack_data(constants.MAX_SEGMENT_SIZE)
     assert payload == \
         b"\x03\x00\x08\x54\x65\x73\x74\x55\x73\x65\x72\x0b\x53\x43\x52\x41" \
         b"\x4d\x53\x48\x41\x32\x35\x36\x40\xed\xbd\x7c\xc8\xb2\xf2\x64\x89" \

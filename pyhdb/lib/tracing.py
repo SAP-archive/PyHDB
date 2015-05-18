@@ -22,7 +22,9 @@ def trace(trace_obj):
     """
     if pyhdb.tracing:
         t = TraceLogger()
-        print(t.trace(trace_obj))
+        tr = t.trace(trace_obj)
+        print(tr)
+        return tr
 
 
 class TraceLogger(object):
@@ -54,15 +56,18 @@ class TraceLogger(object):
                     tracer.writeln(u'%s = %s' % (k, v))
                 tracer.decr(']')
             elif isinstance(attr, (list, tuple)):
-                tracer.writeln(u'%s = ' % (attr_name,))
-                tracer.incr('[')
-                for elem in attr:
-                    if hasattr(elem, '__tracing_attrs__'):
-                        self.trace(elem)
-                    else:
-                        # some other plain list element, just print it as it is:
-                        tracer.writeln(u'%s' % repr(elem))
-                tracer.decr(']')
+                if attr:
+                    tracer.writeln(u'%s = ' % (attr_name,))
+                    tracer.incr('[')
+                    for elem in attr:
+                        if hasattr(elem, '__tracing_attrs__'):
+                            self.trace(elem)
+                        else:
+                            # some other plain list element, just print it as it is:
+                            tracer.writeln(u'%s' % repr(elem))
+                    tracer.decr(']')
+                else:
+                    tracer.writeln(u'%s = []' % (attr_name,))
             else:
                 # a plain attribute object, just print it as it is
                 tracer.writeln(u'%s = %s' % (attr_name, repr(attr)))

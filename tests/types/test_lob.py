@@ -15,21 +15,24 @@
 # language governing permissions and limitations under the License.
 
 import io
-import mock
-import pytest
+import os
+import random
 import string
-from pyhdb.protocol import lobs
-from pyhdb.protocol import parts
-from pyhdb.protocol.types import type_codes
-from pyhdb.exceptions import DataError
-from pyhdb.compat import PY2
 
+import pytest
+import mock
+
+from pyhdb.protocol import lobs
+from pyhdb.protocol.types import type_codes
+from pyhdb.compat import PY2
+from pyhdb.protocol import constants
 
 # #############################################################################################################
 #                         Basic LOB creation from ascii and unicode strings
 # #############################################################################################################
 
 # ### Testing BLOBs
+
 
 def test_blob_uses_bytes_io():
     data = b'abc \x01 \x45 vv'
@@ -304,6 +307,16 @@ def test_read_lob(type_code, lob_header, bin_lob_data, lob_data):
         (_ExpectedLobClass.__name__, lob.length, lob._current_lob_length)
 
 
+def test_read_lob__str__method():
+    """Read/parse a LOB with given payload (data) and check ___str__ method"""
+    payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
+    lob = lobs.from_payload(type_codes.BLOB, payload, None)
+    len = lob._lob_header.byte_length
+    assert str(lob._lob_header) == "<ReadLobHeader type: 1, options 2 (data_included), charlength: %d, bytelength: " \
+                                   "%d, locator_id: '\\x00\\x00\\x00\\x00\\xb2\\xb9\\x04\\x00', chunklength: 1024>" % \
+                                   (len, len)
+
+
 @lob_params
 def test_blob_io_functions(type_code, lob_header, bin_lob_data, lob_data):
     """Test that io functionality (read/seek/getvalue()/...) works fine
@@ -392,50 +405,30 @@ def test_parse_null_blob(type_code, null_lob_header):
 #                         Real HANA interaction with LOBs (integration tests)
 # #############################################################################################################
 
-# LOB_TABLE_NAME = 'PYHDB_LOB_TEST'
-
-TABLE = "PYHDB_TEST_1"
-
-
-def exists_table(connection, name):
-    cursor = connection.cursor()
-    cursor.execute('SELECT 1 FROM "SYS"."TABLES" WHERE "TABLE_NAME" = %s', (name,))
-    return cursor.fetchone() is not None
+TABLE = 'PYHDB_LOB_TEST'
+TABLE_FIELDS = 'name varchar(9), fblob blob, fclob clob, fnclob nclob'
+import tests.helper
 
 
 @pytest.fixture
-def test_lob_table(request, connection):
+def test_table(request, connection):
     """Fixture to create table for testing lobs, and dropping it after test run"""
-    cursor = connection.cursor()
-    if exists_table(connection, "PYHDB_TEST_1"):
-        cursor.execute('DROP TABLE "PYHDB_TEST_1"')
-
-    assert not exists_table(connection, "PYHDB_TEST_1")
-    cursor.execute('CREATE TABLE "PYHDB_TEST_1" (name varchar(9), fblob blob, fclob clob, fnclob nclob)')
-    if not exists_table(connection, "PYHDB_TEST_1"):
-        pytest.skip("Couldn't create table PYHDB_TEST_1")
-        return
-
-    def _close():
-        cursor.execute('DROP TABLE "PYHDB_TEST_1"')
-    request.addfinalizer(_close)
+    tests.helper.create_table_fixture(request, connection, TABLE, TABLE_FIELDS)
 
 
 @pytest.fixture
-def content_lob_table(request, connection):
-    """Additional fixture to test_lob_table, inserts some rows for testing"""
+def content_table(request, connection):
+    """Additional fixture to test_table, inserts some rows for testing"""
     cursor = connection.cursor()
-    if not exists_table(connection, "PYHDB_TEST_1"):
-        raise RuntimeError('Could not find table PYHDB_TEST_1')
-    cursor.execute("insert into PYHDB_TEST_1 (name) values('nulls')")  # all lobs are NULL
-    cursor.execute("insert into PYHDB_TEST_1 values('lob0', 'blob0', 'clob0', 'nclob0')")
+    cursor.execute("insert into %s (name) values('nulls')" % TABLE)  # all lobs are NULL
+    cursor.execute("insert into %s values('lob0', 'blob0', 'clob0', 'nclob0')" % TABLE)
 
 
 # #############################################################################################################
 # select statements
 
 @pytest.mark.hanatest
-def test_select_single_blob_row(connection, test_lob_table, content_lob_table):
+def test_select_single_blob_row(connection, test_table, content_table):
     cursor = connection.cursor()
     row = cursor.execute("select name, fblob, fclob, fnclob from %s where name='lob0'" % TABLE).fetchone()
     name, blob, clob, nclob = row
@@ -449,7 +442,7 @@ def test_select_single_blob_row(connection, test_lob_table, content_lob_table):
 
 
 @pytest.mark.hanatest
-def test_select_single_null_blob_row(connection, test_lob_table, content_lob_table):
+def test_select_single_null_blob_row(connection, test_table, content_table):
     cursor = connection.cursor()
     row = cursor.execute("select name, fblob, fclob, fnclob from %s where name='nulls'" % TABLE).fetchone()
     name, blob, clob, nclob = row
@@ -462,7 +455,7 @@ def test_select_single_null_blob_row(connection, test_lob_table, content_lob_tab
 # insert statements  ### TODO: use parameterization for the next 6 tests!
 
 @pytest.mark.hanatest
-def test_insert_single_string_blob_row(connection, test_lob_table):
+def test_insert_single_string_blob_row(connection, test_table):
     """Insert a single row providing blob data in string format (argument order: name, blob)"""
     cursor = connection.cursor()
     blob_data = BLOB_DATA
@@ -472,7 +465,7 @@ def test_insert_single_string_blob_row(connection, test_lob_table):
 
 
 @pytest.mark.hanatest
-def test_insert_single_object_blob_row(connection, test_lob_table):
+def test_insert_single_object_blob_row(connection, test_table):
     """Insert a single row providing blob data as LOB object (argument order: blob, name)"""
     cursor = connection.cursor()
     blob_data = 'ab \0x1 \0x17 yz'
@@ -483,7 +476,7 @@ def test_insert_single_object_blob_row(connection, test_lob_table):
 
 
 @pytest.mark.hanatest
-def test_insert_single_string_clob_row(connection, test_lob_table):
+def test_insert_single_string_clob_row(connection, test_table):
     """Insert a single row providing clob data in string format (argument order: name, clob)"""
     cursor = connection.cursor()
     clob_data = CLOB_DATA
@@ -493,7 +486,7 @@ def test_insert_single_string_clob_row(connection, test_lob_table):
 
 
 @pytest.mark.hanatest
-def test_insert_single_object_clob_row(connection, test_lob_table):
+def test_insert_single_object_clob_row(connection, test_table):
     """Insert a single row providing clob data in string format (argument order: name, clob)"""
     cursor = connection.cursor()
     clob_data = CLOB_DATA
@@ -504,7 +497,7 @@ def test_insert_single_object_clob_row(connection, test_lob_table):
 
 
 @pytest.mark.hanatest
-def test_insert_single_object_nclob_row(connection, test_lob_table):
+def test_insert_single_object_nclob_row(connection, test_table):
     """Insert a single row providing blob data as LOB object (argument order: nclob, name)"""
     cursor = connection.cursor()
     nclob_data = NCLOB_DATA
@@ -515,7 +508,7 @@ def test_insert_single_object_nclob_row(connection, test_lob_table):
 
 
 @pytest.mark.hanatest
-def test_insert_single_object_nclob_row(connection, test_lob_table):
+def test_insert_single_object_nclob_row(connection, test_table):
     """Insert a single row providing nclob data as LOB object (argument order: nclob, name)"""
     cursor = connection.cursor()
     nclob_data = NCLOB_DATA
@@ -525,10 +518,8 @@ def test_insert_single_object_nclob_row(connection, test_lob_table):
     assert nclob.read() == nclob_data
 
 
-###
-
 @pytest.mark.hanatest
-def test_insert_single_blob_and_clob_row(connection, test_lob_table):
+def test_insert_single_blob_and_clob_row(connection, test_table):
     """Insert a single row providing blob (as string) and clob (as LOB obj) (argument order: blob, name, clob)"""
     cursor = connection.cursor()
     blob_data = 'ab \0x1 \0x17 yz'
@@ -541,7 +532,7 @@ def test_insert_single_blob_and_clob_row(connection, test_lob_table):
 
 
 @pytest.mark.hanatest
-def test_insert_many_clob_and_nclob_rows(connection, test_lob_table):
+def test_insert_multiple_clob_and_nclob_rows(connection, test_table):
     """Insert multiple rows of clob and nclob. Providing wild mix of string, unicode, and lob objects"""
     nclob_data1 = u'เขืองลาจะปเที่ยวเมได้ไาว'   # unicode format
     clob_data1 = string.ascii_letters[:10]
@@ -580,15 +571,62 @@ def test_insert_many_clob_and_nclob_rows(connection, test_lob_table):
 
 
 @pytest.mark.hanatest
-def test_insert_to_large_data_raises(connection, test_lob_table):
-    """Trying to insert data within one single row beyond MAX_MESSAGE_SIZE raises a DataError"""
-    # This is actually not really a lob problem, it can also occur with many large strings in a row.
-    # However uploading lobs with a WriteLob request has not yet been implemented, so providing
-    # a large lob also triggers this error.
+def test_insert_large_blob_via_writelob_requests(connection, test_table):
+    """
+    Inserting a BLOB larger that MAX_SEGMENT_SIZE will split the upload to the DB into the normal INSERT
+    statement plus one or more WRITE_LOB requests.
+    Check that such a large BLOB is written correctly.
+    """
+    bigblob = os.urandom(2 * constants.MAX_SEGMENT_SIZE + 1000)
     cursor = connection.cursor()
-    large_blob_data = parts.MAX_MESSAGE_SIZE * u'λ'
-    with pytest.raises(DataError):
-        cursor.execute("insert into %s (name, fblob) values (:1, :2)" % TABLE, ['bigblob', large_blob_data])
+    cursor.execute("insert into %s (fblob, name) values (:1, :2)" % TABLE, [bigblob, 'blob1'])
+    connection.commit()
+    cursor = connection.cursor()
+    row = cursor.execute("select fblob from %s where name=:1" % TABLE, ['blob1']).fetchone()
+    assert row[0].read() == bigblob
 
-# MORE TESTS TO WRITE:
-# - create cases where writing multiple rows gets split into multiple execute rounds
+
+@pytest.mark.hanatest
+def test_insert_two_large_lobs_via_writelob_requests(connection, test_table):
+    """
+    Inserting BLOBs larger that MAX_SEGMENT_SIZE will split the upload to the DB into the normal INSERT
+    statement plus one or more WRITE_LOB requests.
+    Check that such a large BLOBs are written correctly.
+    """
+    bigblob = os.urandom(2 * constants.MAX_SEGMENT_SIZE + 1000)
+    bigclob = ''.join(random.choice(string.ascii_letters) for x in xrange(2 * constants.MAX_SEGMENT_SIZE))
+    cursor = connection.cursor()
+    cursor.execute("insert into %s (fblob, name, fclob) values (:1, :2, :3)" % TABLE, [bigblob, 'blob1', bigclob])
+    connection.commit()
+    cursor = connection.cursor()
+    row = cursor.execute("select fblob, fclob from %s where name=:1" % TABLE, ['blob1']).fetchone()
+    assert row[0].read() == bigblob
+    assert row[1].read() == bigclob
+
+
+@pytest.mark.hanatest
+def test_multiple_insert_four_large_lobs_via_writelob_requests(connection, test_table):
+    """
+    Inserting BLOBs larger that MAX_SEGMENT_SIZE will split the upload to the DB into the normal INSERT
+    statement plus one or more WRITE_LOB requests.
+    Check that such a large BLOBs are written correctly.
+    """
+    bigblob1 = os.urandom(2 * constants.MAX_SEGMENT_SIZE + 1000)
+    bigblob2 = os.urandom(2 * constants.MAX_SEGMENT_SIZE + 1000)
+    bigclob1 = ''.join(random.choice(string.ascii_letters) for x in xrange(2 * constants.MAX_SEGMENT_SIZE))
+    bigclob2 = ''.join(random.choice(string.ascii_letters) for x in xrange(2 * constants.MAX_SEGMENT_SIZE))
+    cursor = connection.cursor()
+    cursor.executemany("insert into %s (fblob, name, fclob) values (:1, :2, :3)" % TABLE,
+                       [(bigblob1, 'blob1', bigclob1),
+                        (bigblob2, 'blob2', bigclob2)])
+    connection.commit()
+    cursor = connection.cursor()
+    rows = cursor.execute("select fblob, fclob from %s order by name" % TABLE).fetchall()
+
+    fblob1, fclob1 = rows[0]
+    assert fblob1.read() == bigblob1
+    assert fclob1.read() == bigclob1
+
+    fblob2, fclob2 = rows[1]
+    assert fblob2.read() == bigblob2
+    assert fclob2.read() == bigclob2

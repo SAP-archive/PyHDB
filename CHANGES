@@ -1,6 +1,12 @@
 Changelog
 =========
 
+0.3.0
+- added LOB_WRITE requests allowing to insert or update LOBs of arbitrary size
+- reactivated unit tests which were deactivated by accident
+- added pyhdb.connect.from_ini(<inifile>) to connect to db with parameters from properly formatted ini file
+- more code cleanup and refactoring
+
 0.2.4
 -----
 - added support for packing timestamps into payload

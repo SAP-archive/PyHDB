@@ -37,6 +37,22 @@ def connect(host, port, user, password, autocommit=False):
 
 
 def from_ini(ini_file, section=None):
+    """
+    Make connection to database by reading connection parameters from an ini file.
+    :param ini_file: Name of ini file, e.g. 'pytest.ini'
+    :param section: specify alternative section in ini file. Section 'hana' and 'pytest' will be searched by default
+    :return: connection object
+
+    Example:
+        [pytest]
+        hana_host = 10.97.76.24
+        hana_hostname = mo-2384d0f48.mo.sap.corp
+        hana_port = 30015
+        hana_user = D037732
+        hana_password = Abcd1234
+
+    For historical reasons a 'hana_' prefix is allowed, but will be removed automatically.
+    """
     if not os.path.exists(ini_file):
         raise RuntimeError('Could not find ini file %s' % ini_file)
     cp = ConfigParser.ConfigParser()
@@ -64,11 +80,13 @@ def from_ini(ini_file, section=None):
 
     # Parameters can be named like 'hana_user' (e.g. pytest.ini) or just 'user' (other ini's).
     # Remove the 'hana_' prefix so that parameter names match the arguments of the pyhdb.connect() function.
+    # Also remove invalid keys from clean_params (like 'hostname' etc).
 
-    def rm_hana_prefix(param):
+    def rm_prefix(param):
         return param[5:] if param.startswith('hana_') else param
 
-    clean_params = {'%s' % rm_hana_prefix(key): val for key, val in params.iteritems()}
+    valid_keys = ('host', 'port', 'user', 'password')
+    clean_params = {'%s' % rm_prefix(key): val for key, val in params.iteritems() if rm_prefix(key) in valid_keys}
 
     # make actual connection:
     return connect(**clean_params)

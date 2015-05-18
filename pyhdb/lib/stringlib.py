@@ -27,21 +27,32 @@ def allhexlify(data):
     return ''.join([r'\x' + o for o in re.findall('..', hx)])
 
 
-def humanhexlify(data):
+def humanhexlify(data, n=-1):
     """Hexlify given data with 1 space char btw hex values for easier reading for humans
+    :param data: binary data to hexlify
+    :param n: If n is a positive integer then shorten the output of this function to n hexlified bytes.
+
     Input like
         'ab\x04ce'
     becomes
         '61 62 04 63 65'
+
+    With n=3 input like
+        data='ab\x04ce', n=3
+    becomes
+        '61 62 04 ...'
     """
+    tail = ' ...' if 0 < n < len(data) else ''
+    if tail:
+        data = data[:n]
     hx = binascii.hexlify(data)
-    return ' '.join(re.findall('..', hx))
+    return ' '.join(re.findall('..', hx)) + tail
 
 
 def dehexlify(hx):
     """Revert human hexlification - remove white spaces from hex string and convert into real values
     Input like
-        '61 62 04 63 65''ab\x04ce'
+        '61 62 04 63 65'
     becomes
         'ab\x04ce'
     """

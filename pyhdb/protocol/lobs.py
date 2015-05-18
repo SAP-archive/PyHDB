@@ -69,7 +69,6 @@ class Lob(object):
     EXTRA_NUM_ITEMS_TO_READ_AFTER_SEEK = 1024
     type_code = None
     encoding = None
-    _IO_Class = None
 
     @classmethod
     def from_payload(cls, payload_data, lob_header, connection):
