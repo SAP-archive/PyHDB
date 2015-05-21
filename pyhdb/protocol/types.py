@@ -183,7 +183,7 @@ class Real(Type):
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
-        payload = payload.read(8)
+        payload = payload.read(4)
         if payload == b"\xFF\xFF\xFF\xFF":
             return None
         return cls._struct.unpack(payload)[0]
