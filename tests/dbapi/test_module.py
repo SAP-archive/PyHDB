@@ -1,4 +1,4 @@
-# Copyright 2014 SAP SE.
+# Copyright 2014, 2015 SAP SE.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,16 +16,19 @@ import pytest
 
 import pyhdb
 
+
 # Module globals defined by DBAPI 2.0
 def test_apilevel():
     assert pyhdb.apilevel == "2.0"
 
+
 def test_threadsafety():
     assert pyhdb.threadsafety == 2
 
+
 def test_paramstyle():
-    # TODO: Support also named format
-    assert pyhdb.paramstyle == "format"
+    assert pyhdb.paramstyle == "numeric"
+
 
 def test_exceptions():
     assert issubclass(pyhdb.Warning, Exception)
@@ -38,8 +41,9 @@ def test_exceptions():
     assert issubclass(pyhdb.ProgrammingError, pyhdb.Error)
     assert issubclass(pyhdb.NotSupportedError, pyhdb.Error)
 
+
 @pytest.mark.hanatest
 def test_connect_constructors(hana_system):
     connection = pyhdb.connect(*hana_system)
-    assert isinstance(connection, pyhdb.client.Connection)
+    assert isinstance(connection, pyhdb.connection.Connection)
     connection.close()

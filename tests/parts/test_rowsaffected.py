@@ -1,4 +1,4 @@
-# Copyright 2014 SAP SE.
+# Copyright 2014, 2015 SAP SE.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,12 +15,14 @@
 from io import BytesIO
 from pyhdb.protocol.parts import RowsAffected
 
+
 def test_unpack_one_value():
     values = RowsAffected.unpack_data(
         1,
         BytesIO(b"\x01\x00\x00\x00")
     )
     assert values == ((1,),)
+
 
 def test_unpack_multiple_values():
     values = RowsAffected.unpack_data(

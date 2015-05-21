@@ -1,4 +1,4 @@
-# Copyright 2014 SAP SE.
+# Copyright 2014, 2015 SAP SE.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,9 +15,7 @@
 import pytest
 
 from pyhdb.auth import AuthManager
-from pyhdb.protocol.base import RequestSegment, Part
-from pyhdb.protocol.constants import message_types, part_kinds
-from pyhdb.protocol.parts import Authentication
+
 
 @pytest.fixture
 def auth_manager():
@@ -29,6 +27,7 @@ def auth_manager():
                          b"\xa7\xc3\x4c\x8a\x70\x90\x8e\xd5\xbe\x0b\x35\x42" \
                          b"\x70\x5f\x73\x8c"
     return manager
+
 
 class TestSCRAMSHA256(object):
 

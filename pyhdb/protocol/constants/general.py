@@ -12,19 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Function codes
-
-# These values are embedded in REPLY segment headers
-
-DDL = 1
-INSERT = 2
-UPDATE = 3
-DELETE = 4
-SELECT = 5
-DBPROCEDURECALL = 8             # CALL statement
-DBPROCEDURECALLWITHRESULT = 9   # CALL statement returning one or more results
-WRITELOB = 15
-READLOB = 16
-DISCONNECT = 18
-
-DML = frozenset([INSERT, UPDATE, DELETE])
+MAX_MESSAGE_SIZE = 2**17
+MESSAGE_HEADER_SIZE = 32  # this will be verified on 'Message'-class creation
+MAX_SEGMENT_SIZE = MAX_MESSAGE_SIZE - MESSAGE_HEADER_SIZE

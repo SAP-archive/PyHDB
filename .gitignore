@@ -2,6 +2,10 @@
 
 #!! ERROR: Python is undefined. Use list command to see defined gitignore types !!#
 
+### SAP internal test ###
+saptest
+
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -17,7 +21,6 @@ build/
 develop-eggs/
 dist/
 eggs/
-lib/
 lib64/
 sdist/
 var/

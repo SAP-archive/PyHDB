@@ -1,4 +1,4 @@
-# Copyright 2014 SAP SE
+# Copyright 2014, 2015 SAP SE
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,14 +17,16 @@ import struct
 import hashlib
 import hmac
 from io import BytesIO
-
-from pyhdb.protocol.base import RequestSegment, Part
+###
+from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.constants import message_types
 from pyhdb.protocol.parts import Authentication, Fields
-from pyhdb._compat import iter_range
+from pyhdb.protocol.message import RequestMessage
+from pyhdb.compat import iter_range
 
 CLIENT_PROOF_SIZE = 32
 CLIENT_KEY_SIZE = 64
+
 
 class AuthManager(object):
 
@@ -38,12 +40,14 @@ class AuthManager(object):
         self.client_proof = None
 
     def perform_handshake(self):
-        response = self.connection.Message(
+        request = RequestMessage.new(
+            self.connection,
             RequestSegment(
                 message_types.AUTHENTICATE,
                 Authentication(self.user, {self.method: self.client_key})
             )
-        ).send()
+        )
+        response = self.connection.send_request(request)
 
         auth_part = response.segments[0].parts[0]
         if self.method not in auth_part.methods:
@@ -85,7 +89,8 @@ class AuthManager(object):
 
         return self._xor(sig, key)
 
-    def _xor(self, a, b):
+    @staticmethod
+    def _xor(a, b):
         a = bytearray(a)
         b = bytearray(b)
         result = bytearray(len(a))

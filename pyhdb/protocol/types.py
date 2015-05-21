@@ -1,4 +1,4 @@
-# Copyright 2014 SAP SE
+# Copyright 2014, 2015 SAP SE
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,51 +11,58 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import absolute_import
 
-import sys
+import types as py_types
 import re
 import struct
 import binascii
 import decimal
+import logging
+import datetime
 from weakref import WeakValueDictionary
-from datetime import datetime, time, date
 
-import pyhdb.cesu8
+from pyhdb.protocol.constants import type_codes
 from pyhdb.exceptions import InterfaceError
-from pyhdb._compat import PY2, PY3, with_metaclass, iter_range, int_types, \
+from pyhdb.compat import PY26, PY3, with_metaclass, iter_range, int_types, \
     string_types, byte_type, text_type
+from pyhdb.protocol.headers import WriteLobHeader
 
 
+recv_log = logging.getLogger('receive')
+debug = recv_log.debug
+
+# Dictionary: keys: numeric type_code, values: Type-(sub)classes (from below)
 by_type_code = WeakValueDictionary()
+# Dictionary: keys: Python type classes, values: Type-(sub)classes (from below)
 by_python_type = WeakValueDictionary()
 
-PY26 = PY2 and sys.version_info[1] == 6
 
 class TypeMeta(type):
     """
-    Meta class for type classes.
+    Meta class for Type classes.
     """
 
     @staticmethod
-    def _add_type_to_type_code_mapping(type_class, code):
-        if not 0 <= code <= 127:
+    def _add_type_to_type_code_mapping(type_class, type_code):
+        if not 0 <= type_code <= 127:
             raise InterfaceError(
-                "%s type code must be between 0 and 127" %
+                "%s type type_code must be between 0 and 127" %
                 type_class.__name__
             )
-        by_type_code[code] = type_class
+        by_type_code[type_code] = type_class
 
     def __new__(cls, name, bases, attrs):
         type_class = super(TypeMeta, cls).__new__(cls, name, bases, attrs)
 
         # populate by_type_code mapping
-        if hasattr(type_class, "code"):
-            if isinstance(type_class.code, (tuple, list)):
-                for code in type_class.code:
-                    TypeMeta._add_type_to_type_code_mapping(type_class, code)
+        if hasattr(type_class, "type_code"):
+            if isinstance(type_class.type_code, (tuple, list)):
+                for type_code in type_class.type_code:
+                    TypeMeta._add_type_to_type_code_mapping(type_class, type_code)
             else:
                 TypeMeta._add_type_to_type_code_mapping(
-                    type_class, type_class.code
+                    type_class, type_class.type_code
                 )
 
         # populate by_python_type mapping
@@ -68,59 +75,83 @@ class TypeMeta(type):
 
         return type_class
 
+
 class Type(with_metaclass(TypeMeta, object)):
-    pass
+    """Base class for all types"""
+
 
 class NoneType(Type):
 
     python_type = None.__class__
 
     @classmethod
-    def to_sql(cls, self):
+    def to_sql(cls, _):
         return text_type("NULL")
+
+    @classmethod
+    def prepare(cls, type_code):
+        """Prepare a binary NULL value for given type code"""
+        # This is achieved by setting the MSB of the type_code byte to 1
+        return struct.pack('<B', type_code | 0x80)
+
 
 class _IntType(Type):
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         if payload.read(1) == b"\x01":
-            return cls.struct.unpack(payload.read(cls.struct.size))[0]
+            # x01 indicates that there is a real value available to be read
+            return cls._struct.unpack(payload.read(cls._struct.size))[0]
         else:
             # Value is Null
             return None
 
+    @classmethod
+    def prepare(cls, value):
+        if value is None:
+            pfield = struct.pack('b', 0)
+        else:
+            pfield = struct.pack('b', cls.type_code)
+            pfield += cls._struct.pack(int(value))
+        return pfield
+
+
 class TinyInt(_IntType):
 
-    code = 1
-    struct = struct.Struct("B")
+    type_code = type_codes.TINYINT
+    _struct = struct.Struct("B")
+
 
 class SmallInt(_IntType):
 
-    code = 2
-    struct = struct.Struct("h")
+    type_code = type_codes.SMALLINT
+    _struct = struct.Struct("h")
+
 
 class Int(_IntType):
 
-    code = 3
+    type_code = type_codes.INT
     python_type = int_types
-    struct = struct.Struct("i")
+    _struct = struct.Struct("i")
 
     @classmethod
     def to_sql(cls, value):
         return text_type(value)
 
+
 class BigInt(_IntType):
 
-    code = 4
-    struct = struct.Struct("q")
+    type_code = type_codes.BIGINT
+    _struct = struct.Struct("l")
+
 
 class Decimal(Type):
 
-    code = 5
+    type_code = type_codes.DECIMAL
     python_type = decimal.Decimal
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         payload = bytearray(payload.read(16))
         payload.reverse()
 
@@ -144,38 +175,42 @@ class Decimal(Type):
     def to_sql(cls, value):
         return text_type(value)
 
+
 class Real(Type):
 
-    code = 6
-    struct = struct.Struct("<f")
+    type_code = type_codes.REAL
+    _struct = struct.Struct("<f")
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         payload = payload.read(8)
         if payload == b"\xFF\xFF\xFF\xFF":
             return None
-        return cls.struct.unpack(payload)[0]
+        return cls._struct.unpack(payload)[0]
+
 
 class Double(_IntType):
 
-    code = 7
+    type_code = type_codes.DOUBLE
     python_type = float
-    struct = struct.Struct("<d")
+    _struct = struct.Struct("<d")
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         payload = payload.read(8)
         if payload == b"\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF":
             return None
-        return cls.struct.unpack(payload)[0]
+        return cls._struct.unpack(payload)[0]
 
     @classmethod
     def to_sql(cls, value):
         return text_type(value)
 
+
 class String(Type):
 
-    code = (8, 9, 10, 11, 29, 30)
+    type_code = (type_codes.CHAR, type_codes.VARCHAR, type_codes.NCHAR, type_codes.NVARCHAR,
+                 type_codes.STRING, type_codes.NSTRING)
     python_type = string_types
 
     ESCAPE_REGEX = re.compile(r"[\']")
@@ -197,7 +232,7 @@ class String(Type):
         return length
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         length = String.get_length(payload)
         if length is None:
             return None
@@ -210,13 +245,38 @@ class String(Type):
             value
         )
 
+    @classmethod
+    def prepare(cls, value, type_code=type_codes.CHAR):
+        pfield = struct.pack('b', type_code)
+        if value is None:
+            # length indicator
+            pfield += struct.pack('B', 255)
+        else:
+            if not isinstance(value, py_types.StringTypes):
+                # Value is provided e.g. as integer, but a string is actually required. Try proper casting into string:
+                value = text_type(value)
+            value = value.encode('cesu-8')
+            length = len(value)
+            # length indicator
+            if length <= 245:
+                pfield += struct.pack('B', length)
+            elif length <= 32767:
+                pfield += struct.pack('B', 246)
+                pfield += struct.pack('H', length)
+            else:
+                pfield += struct.pack('B', 247)
+                pfield += struct.pack('I', length)
+            pfield += value
+        return pfield
+
+
 class Binary(Type):
 
-    code = (12, 13, 33)
+    type_code = (type_codes.BINARY, type_codes.VARBINARY, type_codes.BSTRING)
     python_type = byte_type
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         length = String.get_length(payload)
         if length is None:
             return None
@@ -231,14 +291,15 @@ class Binary(Type):
             value = value.decode('ascii')
         return "'%s'" % value
 
+
 class Date(Type):
 
-    code = 14
-    python_type = date
-    struct = struct.Struct("hbh")
+    type_code = type_codes.DATE
+    python_type = datetime.date
+    _struct = struct.Struct("<HBH")
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         payload = bytearray(payload.read(4))
         if not payload[1] & 0x80:
             return None
@@ -246,53 +307,166 @@ class Date(Type):
         year = payload[0] | (payload[1] & 0x3F) << 8
         month = payload[2] + 1
         day = payload[3]
-        return date(year, month, day)
+        return cls.python_type(year, month, day)
 
     @classmethod
     def to_sql(cls, value):
         return "'%s'" % value.isoformat()
 
-class Time(Type):
-
-    code = 15
-    python_type = time
-    struct = struct.Struct("bbH")
+    @classmethod
+    def prepare(cls, value):
+        """Pack datetime value into proper binary format"""
+        # According to the docs setting year to 0x8000 indicates a NULL value for a date object
+        year = 0x8000 if value is None else value.year
+        pfield = struct.pack('b', cls.type_code)
+        pfield += cls._struct.pack(year, value.month, value.day)
+        return pfield
 
     @classmethod
-    def from_resultset(cls, payload):
-        hour, minute, millisec = cls.struct.unpack(payload.read(4))
+    def to_daydate(cls, *argv):
+        """
+        Convert date to Julian day (DAYDATE)
+        """
+        argc = len(argv)
+        if argc == 3:
+            year, month, day = argv
+        elif argc == 1:
+            dval = argv[0]
+            try:
+                year = dval.year
+                month = dval.month
+                day = dval.day
+            except AttributeError:
+                raise InterfaceError("Unsupported python date input: %s (%s)" % (str(dval), dval.__class__))
+        else:
+            raise InterfaceError("Date.to_datetime does not support %d arguments." % argc)
+
+        TURN_OF_ERAS = 1721424
+
+        if month < 3:
+            year -= 1
+            month += 12
+
+        if ((year > 1582) or
+                (year == 1582 and month > 10) or
+                (year == 1582 and month == 10 and day >= 15)):
+            A = int(year / 100)
+            B = int(A / 4)
+            C = 2 - A + B
+        else:
+            C = 0
+
+        E = int(365.25 * (year + 4716))
+        F = int(30.6001 * (month + 1))
+        Z = C + day + E + F - 1524
+        return Z + 1 - TURN_OF_ERAS
+
+
+class Time(Type):
+
+    type_code = type_codes.TIME
+    python_type = datetime.time
+    _struct = struct.Struct("<bbH")
+
+    @classmethod
+    def from_resultset(cls, payload, connection=None):
+        hour, minute, millisec = cls._struct.unpack(payload.read(4))
         if not hour & 0x80:
             return None
 
         hour = hour & 0x7f
         second, millisec = divmod(millisec, 1000)
-        return time(hour, minute, second, millisec * 1000)
+        return cls.python_type(hour, minute, second, millisec * 1000)
 
     @classmethod
     def to_sql(cls, value):
         return "'%s'" % value.strftime("%H:%M:%S")
 
+
 class Timestamp(Type):
 
-    code = 16
-    python_type = datetime
+    type_code = type_codes.TIMESTAMP
+    python_type = datetime.datetime
+    _struct = struct.Struct("<HBBBBH")
 
     @classmethod
-    def from_resultset(cls, payload):
+    def from_resultset(cls, payload, connection=None):
         date = Date.from_resultset(payload)
         time = Time.from_resultset(payload)
 
         if date is None or time is None:
             return None
 
-        return datetime.combine(date, time)
+        return datetime.datetime.combine(date, time)
 
     @classmethod
     def to_sql(cls, value):
-        return "'%s.%s'" % (
-            value.strftime("%Y-%m-%d %H:%M:%S"),
-            value.microsecond
-        )
+        return "'%s.%s'" % (value.strftime("%Y-%m-%d %H:%M:%S"), value.microsecond)
+
+    @classmethod
+    def prepare(cls, value):
+        """Pack datetime value into proper binary format"""
+        pfield = struct.pack('b', cls.type_code)
+        millisecond = int(round(value.second * 1000 + value.microsecond / 1000.))
+        year = value.year | 0x8000  # for some unknown reasons year has to be bit-or'ed with 0x8000
+        month = value.month - 1     # for some unknown reasons HANA counts months starting from zero
+        hour = value.hour | 0x80    # for some unknown reasons hour has to be bit-or'ed with 0x80
+        pfield += cls._struct.pack(year, month, value.day, hour, value.minute, millisecond)
+        return pfield
+
+
+class MixinLobType(object):
+    """Mixin class for all LOB types"""
+    type_code = None
+
+    @classmethod
+    def from_resultset(cls, payload, connection=None):
+        # to avoid circular import the 'lobs' module has to be imported here:
+        from . import lobs
+        return lobs.from_payload(cls.type_code, payload, connection)
+
+    @classmethod
+    def prepare(cls, value, length=0, position=0, is_last_data=True):
+        """Prepare Lob header.
+        Note that the actual lob data is NOT written here but appended after the parameter block for each row!
+        """
+        hstruct = WriteLobHeader.header_struct
+        lob_option_dataincluded = WriteLobHeader.LOB_OPTION_DATAINCLUDED if length > 0 else 0
+        lob_option_lastdata = WriteLobHeader.LOB_OPTION_LASTDATA if is_last_data else 0
+        options = lob_option_dataincluded | lob_option_lastdata
+        pfield = hstruct.pack(cls.type_code, options, length, position)
+        return pfield
+
+
+class ClobType(Type, MixinLobType):
+    """CLOB type class"""
+    type_code = type_codes.CLOB
+
+    @classmethod
+    def encode_value(cls, value):
+        """Return value if it is a string, otherwise properly encode unicode to binary ascii string"""
+        return value if isinstance(value, str) else value.encode('ascii')
+
+
+class NClobType(Type, MixinLobType):
+    """NCLOB type class"""
+    type_code = type_codes.NCLOB
+
+    @classmethod
+    def encode_value(cls, value):
+        """Return value if it is a string, otherwise properly encode unicode to binary unicode string"""
+        return value if isinstance(value, str) else value.encode('utf8')
+
+
+class BlobType(Type, MixinLobType):
+    """BLOB type class"""
+    type_code = type_codes.BLOB
+
+    @classmethod
+    def encode_value(cls, value):
+        """Return value if it is a string, otherwise properly encode unicode to binary unicode string"""
+        return value if isinstance(value, str) else value.encode('utf8')
+
 
 def escape(value):
     """
@@ -309,6 +483,7 @@ def escape(value):
             )
 
         return typ.to_sql(value)
+
 
 def escape_values(values):
     """

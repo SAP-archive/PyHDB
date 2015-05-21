@@ -12,19 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Function codes
+# Segment kinds
 
-# These values are embedded in REPLY segment headers
-
-DDL = 1
-INSERT = 2
-UPDATE = 3
-DELETE = 4
-SELECT = 5
-DBPROCEDURECALL = 8             # CALL statement
-DBPROCEDURECALLWITHRESULT = 9   # CALL statement returning one or more results
-WRITELOB = 15
-READLOB = 16
-DISCONNECT = 18
-
-DML = frozenset([INSERT, UPDATE, DELETE])
+RESERVED = 0  # reserved for invalid segments, do not use
+REQUEST = 1
+REPLY = 2
+ERROR = 5     # reply segment containing error

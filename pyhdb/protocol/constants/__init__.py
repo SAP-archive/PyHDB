@@ -1,4 +1,4 @@
-# Copyright 2014 SAP SE
+# Copyright 2014, 2015 SAP SE
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,3 +30,13 @@ DEFAULT_CONNECTION_OPTIONS = {
     "data_format_version": 1,
     "data_format_version2": 1
 }
+
+from general import MAX_MESSAGE_SIZE, MAX_SEGMENT_SIZE
+
+import function_codes
+import general
+import message_types
+import parameter_direction
+import part_kinds
+import segment_kinds
+import type_codes

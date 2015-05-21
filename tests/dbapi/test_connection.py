@@ -1,4 +1,4 @@
-# Copyright 2014 SAP SE.
+# Copyright 2014, 2015 SAP SE.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,24 +15,29 @@
 import pytest
 import pyhdb
 
+
 # Test for DBAPI 2.0 compliance
 @pytest.mark.hanatest
 def test_fixture_connection(connection):
     # Smoke test of the connection fixture
     pass
 
+
 @pytest.mark.hanatest
 def test_commit(connection):
     connection.commit()
+
 
 @pytest.mark.hanatest
 def test_rollback(connection):
     connection.rollback()
 
+
 @pytest.mark.hanatest
 def test_cursor(connection):
     cursor = connection.cursor()
     assert isinstance(cursor, pyhdb.cursor.Cursor)
+
 
 @pytest.mark.hanatest
 @pytest.mark.parametrize("method", [

@@ -1,4 +1,4 @@
-# Copyright 2014 SAP SE
+# Copyright 2014, 2015 SAP SE
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 import sys
 
 PY2 = sys.version_info[0] == 2
+PY26 = PY2 and sys.version_info[1] == 6
 PY3 = sys.version_info[0] == 3
 
 if PY2:
@@ -36,6 +37,7 @@ else:
 if sys.maxunicode <= 65535:
     unichr = lambda n: ('\\U%08x' % n).decode('unicode-escape')
 
+
 def with_metaclass(meta, *bases):
     """
     Function from jinja2/_compat.py.
@@ -50,6 +52,7 @@ def with_metaclass(meta, *bases):
                 return type.__new__(cls, name, (), d)
             return meta(name, bases, d)
     return metaclass('temporary_class', None, {})
+
 
 def is_text(obj):
     return isinstance(obj, text_type)

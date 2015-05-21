@@ -1,4 +1,4 @@
-# Copyright 2014 SAP SE.
+# Copyright 2014, 2015 SAP SE.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
 
 from io import BytesIO
 from pyhdb.protocol.parts import ConnectOptions
+from pyhdb.protocol import constants
+
 
 def test_pack_default_connection_options():
     options = {
@@ -35,10 +37,10 @@ def test_pack_default_connection_options():
         "data_format_version2": 1
     }
 
-    arguments, payload = ConnectOptions(options).pack_data()
+    arguments, payload = ConnectOptions(options).pack_data(constants.MAX_SEGMENT_SIZE)
     assert arguments == 8
-    ## Test note: We can test again the cncatenated hex string
-    ## because sometimes the order of the dict elements is different
+    # Test note: We can test again the cncatenated hex string
+    # because sometimes the order of the dict elements is different
 
     # Contains complete_array_execution
     assert b"\x02\x1C\x01" in payload
@@ -70,8 +72,8 @@ def test_pack_default_connection_options():
 
 def test_unpack_default_connection_options():
     packed = BytesIO(
-        b"\x03\x1d\x05\x00\x65\x6e\x5f\x55\x53\x0f\x03\x00\x00\x00\x00\x17" \
-        b"\x03\x01\x00\x00\x00\x0c\x03\x01\x00\x00\x00\x02\x1c\x01\x11\x03" \
+        b"\x03\x1d\x05\x00\x65\x6e\x5f\x55\x53\x0f\x03\x00\x00\x00\x00\x17"
+        b"\x03\x01\x00\x00\x00\x0c\x03\x01\x00\x00\x00\x02\x1c\x01\x11\x03"
         b"\x00\x00\x00\x00\x0e\x1c\x00\x12\x1c\x01"
     )
 
