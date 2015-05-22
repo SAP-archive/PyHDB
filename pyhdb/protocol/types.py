@@ -366,7 +366,7 @@ class Time(Type):
 
     type_code = type_codes.TIME
     python_type = datetime.time
-    _struct = struct.Struct("<bbH")
+    _struct = struct.Struct("<BBH")
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
@@ -381,6 +381,15 @@ class Time(Type):
     @classmethod
     def to_sql(cls, value):
         return "'%s'" % value.strftime("%H:%M:%S")
+
+    @classmethod
+    def prepare(cls, value):
+        """Pack time value into proper binary format"""
+        pfield = struct.pack('b', cls.type_code)
+        millisecond = int(round(value.second * 1000 + value.microsecond / 1000.))
+        hour = value.hour | 0x80    # for some unknown reasons hour has to be bit-or'ed with 0x80
+        pfield += cls._struct.pack(hour, value.minute, millisecond)
+        return pfield
 
 
 class Timestamp(Type):
