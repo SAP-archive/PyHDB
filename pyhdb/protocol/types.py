@@ -296,7 +296,7 @@ class Date(Type):
 
     type_code = type_codes.DATE
     python_type = datetime.date
-    _struct = struct.Struct("<HBH")
+    _struct = struct.Struct("<HBB")
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
@@ -316,10 +316,10 @@ class Date(Type):
     @classmethod
     def prepare(cls, value):
         """Pack datetime value into proper binary format"""
-        # According to the docs setting year to 0x8000 indicates a NULL value for a date object
-        year = 0x8000 if value is None else value.year
         pfield = struct.pack('b', cls.type_code)
-        pfield += cls._struct.pack(year, value.month, value.day)
+        year = value.year | 0x8000  # for some unknown reasons year has to be bit-or'ed with 0x8000
+        month = value.month - 1     # for some unknown reasons HANA counts months starting from zero
+        pfield += cls._struct.pack(year, month, value.day)
         return pfield
 
     @classmethod
