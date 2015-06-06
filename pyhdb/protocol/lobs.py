@@ -56,7 +56,6 @@ def from_payload(type_code, payload, connection):
         lob = None
     else:
         data = payload.read(lob_header.chunk_length)
-        # print 'raw lob data: %r' % data
         _LobClass = LOB_TYPE_CODE_MAP[type_code]
         lob = _LobClass.from_payload(data, lob_header, connection)
         recv_log.debug('Lob Header %r' % lob)
