@@ -270,7 +270,6 @@ To get tracing information when running pytest provide the ``-s`` option:
 ToDos
 ^^^^^
 
-* Implementing support for writing LOBs of arbitrary size to the database
 * Allow execution of stored database procedure
 * Support of ``SELECT FOR UPDATE``
 * Authentication methods

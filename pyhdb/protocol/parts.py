@@ -334,7 +334,6 @@ class ReadLobRequest(Part):
     def pack_data(self, remaining_size):
         """Pack data. readoffset has to be increased by one, seems like HANA starts from 1, not zero."""
         payload = self.part_struct.pack(self.locator_id, self.readoffset + 1, self.readlength, '    ')
-        # print repr(payload)
         return 4, payload
 
 
@@ -346,7 +345,6 @@ class ReadLobReply(Part):
     __tracing_attrs__ = Part.__tracing_attrs__ + ['is_data_included', 'is_last_data', 'is_null']
 
     def __init__(self, data, is_data_included, is_last_data, is_null):
-        # print 'realobreply called with args', args
         self.data = data
         self.is_data_included = is_data_included
         self.is_last_data = is_last_data
@@ -369,7 +367,6 @@ class ReadLobReply(Part):
                 lobdata = ''
             is_last_data = bool(options & ReadLobHeader.LOB_OPTION_LASTDATA)
             assert len(lobdata) == chunklength
-        # print 'realobreply unpack data called with args', len(lobdata), is_data_included, is_last_data
         return lobdata, is_data_included, is_last_data, is_null
 
 
@@ -500,7 +497,7 @@ class Parameters(Part):
 
                 if type_code in (types.BlobType.type_code, types.ClobType.type_code, types.NClobType.type_code):
                     # In case of value being a lob its actual data is not yet included in 'pfield' generated above.
-                    # Instead the lob data will be appended at the end of the packed row data.
+                    # Instead the lob data needs to be appended at the end of the packed row data.
                     # Memorize the position of the lob header data (the 'pfield'):
                     lob_header_pos = payload.tell()
                     lob_buffer = LobBuffer(value, _DataType, lob_header_pos)
@@ -529,17 +526,13 @@ class Parameters(Part):
                 num_rows += 1
                 # Now append as much as possible of actual binary lob data after the end of all parameters of this row.
                 # All those LOBs which were not or only partially written to the payload will be collected in
-                # 'unwritten_lobs' for furhter LOBWRITEREQUESTs.
+                # 'unwritten_lobs' for further LOBWRITEREQUESTs.
                 self.unwritten_lobs = self.pack_lob_data(remaining_size, payload, row_header_start_pos, row_lobs)
 
                 if payload.tell() >= remaining_size:
                     # all the rest of the segment is filled with lob data, no more rows can be added:
                     break
 
-            # payload.seek(row_header_start_pos)
-            # from pyhdb.lib.stringlib import humanhexlify
-            # print 'row', num_rows, humanhexlify(payload.read())[:500]
-        #                                             TODO: also return unwritten lobs for further LobWrite requests!
         return num_rows, payload.getvalue()
 
     @staticmethod
@@ -552,7 +545,6 @@ class Parameters(Part):
         :param row_lobs: list of row buffer instance (containing binary encoded lob data, header position and DataType)
         """
         unwritten_lobs = collections.deque()
-        print 'writing lob buffers', row_lobs
         for lob_buffer in row_lobs:
             # Calculate relative position of lob within the binary packed parameter row.
             # Add +1, Hana counts from 1, not 0!
@@ -560,11 +552,9 @@ class Parameters(Part):
 
             # Calculate how much space is left in message for lob data:
             max_data_to_write = min(lob_buffer.encoded_lob_size, remaining_size - payload.tell())
-            print 'Writing lob data %d bytes of %d' % (max_data_to_write, lob_buffer.encoded_lob_size)
             payload.write(lob_buffer.encoded_data.read(max_data_to_write))
             is_last_data = max_data_to_write == lob_buffer.encoded_lob_size
             if not is_last_data:
-                print 'adding lob_buffer to unwritte_lobs list'
                 # lob has not been written (partially or entirely) into message -> register for further write requests
                 unwritten_lobs.append(lob_buffer)
 

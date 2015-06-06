@@ -101,8 +101,6 @@ class ReadLobHeader(BaseLobheader):
             raw_header_p2 = payload.read(self.header_struct_part2.size)
             header = self.header_struct_part2.unpack(raw_header_p2)
             (reserved, self.char_length, self.byte_length, self.locator_id, self.chunk_length) = header
-            # from pyhdb.lib.stringlib import allhexlify
-            # print 'raw lob header: %s' % allhexlify(raw_header_p1 + raw_header_p2)
 
             # Set total_lob_length attribute differently for binary and character lobs:
             self.total_lob_length = self.byte_length if self.lob_type == self.BLOB_TYPE else self.char_length
