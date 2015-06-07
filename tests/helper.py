@@ -13,16 +13,31 @@
 # language governing permissions and limitations under the License.
 
 import pytest
+from pyhdb import DatabaseError
 
 
 def exists_table(connection, table):
     """Check whether table exists
     :param table: name of table
     :returns: bool
+
+    Note:
+    Databases on Hana Cloud Platform HPC have heavy performance problems when accessing "sys.tables" for checking
+    for the existance of a certain table.
+
+    The original code was:
+        cursor.execute('SELECT 1 FROM "SYS"."TABLES" WHERE "TABLE_NAME" = %s', (table,))
+        return cursor.fetchone() is not None
+
+    It has been replaced with the try...select...except statement below which performs nicely on HCP.
     """
     cursor = connection.cursor()
-    cursor.execute('SELECT 1 FROM "SYS"."TABLES" WHERE "TABLE_NAME" = %s', (table,))
-    return cursor.fetchone() is not None
+    try:
+        cursor.execute('SELECT 1 from %s' % table)
+    except DatabaseError:
+        return False
+    else:
+        return True
 
 
 def create_table_fixture(request, connection, table, table_fields):
