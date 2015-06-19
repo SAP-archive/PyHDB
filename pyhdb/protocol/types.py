@@ -479,6 +479,10 @@ class Geometry(Type, MixinStringType):
     def prepare(cls, value):
         return MixinStringType.prepare(value, type_codes.STRING)
 
+    @classmethod
+    def to_sql(cls, value):
+        return text_type(value)
+
 
 def escape(value):
     """
