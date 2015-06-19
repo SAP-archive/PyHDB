@@ -226,7 +226,7 @@ class MixinStringType(object):
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
-        length = String.get_length(payload)
+        length = MixinStringType.get_length(payload)
         if length is None:
             return None
         return payload.read(length).decode('cesu-8')
@@ -273,14 +273,14 @@ class String(Type, MixinStringType):
         )
 
 
-class Binary(Type):
+class Binary(Type, MixinStringType):
 
     type_code = (type_codes.BINARY, type_codes.VARBINARY, type_codes.BSTRING)
     python_type = byte_type
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
-        length = String.get_length(payload)
+        length = MixinStringType.get_length(payload)
         if length is None:
             return None
         return byte_type(payload.read(length))
