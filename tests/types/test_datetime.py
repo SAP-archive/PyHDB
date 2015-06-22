@@ -86,7 +86,10 @@ def test_to_daydate(input, expected):
 # ########################## Test value packing #####################################
 
 @pytest.mark.parametrize("input,expected", [
+    (datetime(2014, 8, 25, 9, 47, 3), b'\x10\xDE\x87\x07\x19\x89\x2F\xb8\x0b'),
     (datetime(2014, 8, 25, 9, 47, 3, 2000), b'\x10\xDE\x87\x07\x19\x89\x2F\xba\x0b'),
+    ("2014-08-25 09:47:03", b'\x10\xDE\x87\x07\x19\x89\x2F\xb8\x0b'),
+    ("2014-08-25 09:47:03.002000", b'\x10\xDE\x87\x07\x19\x89\x2F\xba\x0b'),
 ])
 def test_pack_timestamp(input, expected):
         assert types.Timestamp.prepare(input) == expected
@@ -94,6 +97,7 @@ def test_pack_timestamp(input, expected):
 
 @pytest.mark.parametrize("input,expected", [
     (date(2014, 8, 25), b'\x0e\xDE\x87\x07\x19'),
+    ("2014-8-25", b'\x0e\xDE\x87\x07\x19'),
 ])
 def test_pack_date(input, expected):
         assert types.Date.prepare(input) == expected
@@ -102,6 +106,8 @@ def test_pack_date(input, expected):
 @pytest.mark.parametrize("input,expected", [
     (time(9, 47, 3), b'\x0f\x89/\xb8\x0b'),
     (time(9, 47, 3, 2000), b'\x0f\x89\x2F\xba\x0b'),
+    ("9:47:03", b'\x0f\x89/\xb8\x0b'),
+    ("9:47:03.002000", b'\x0f\x89\x2F\xba\x0b'),
 ])
 def test_pack_time(input, expected):
         assert types.Time.prepare(input) == expected

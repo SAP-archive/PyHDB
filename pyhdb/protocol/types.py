@@ -317,8 +317,8 @@ class Date(Type):
     def prepare(cls, value):
         """Pack datetime value into proper binary format"""
         pfield = struct.pack('b', cls.type_code)
-        if isinstance(value, text_type):
-            value = datetime.date.strptime(value, "%Y-%m-%d")
+        if isinstance(value, str):
+            value = datetime.datetime.strptime(value, "%Y-%m-%d")
         year = value.year | 0x8000  # for some unknown reasons year has to be bit-or'ed with 0x8000
         month = value.month - 1     # for some unknown reasons HANA counts months starting from zero
         pfield += cls._struct.pack(year, month, value.day)
@@ -388,8 +388,11 @@ class Time(Type):
     def prepare(cls, value):
         """Pack time value into proper binary format"""
         pfield = struct.pack('b', cls.type_code)
-        if isinstance(value, text_type):
-            value = datetime.time.strptime(value, "%H:%M:%S.%f")
+        if isinstance(value, str):
+            if "." in value:
+                value = datetime.datetime.strptime(value, "%H:%M:%S.%f")
+            else:
+                value = datetime.datetime.strptime(value, "%H:%M:%S")
         millisecond = int(round(value.second * 1000 + value.microsecond / 1000.))
         hour = value.hour | 0x80    # for some unknown reasons hour has to be bit-or'ed with 0x80
         pfield += cls._struct.pack(hour, value.minute, millisecond)
@@ -420,8 +423,11 @@ class Timestamp(Type):
     def prepare(cls, value):
         """Pack datetime value into proper binary format"""
         pfield = struct.pack('b', cls.type_code)
-        if isinstance(value, text_type):
-            value = datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S.%f")
+        if isinstance(value, str):
+            if "." in value:
+                value = datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S.%f")
+            else:
+                value = datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
         millisecond = int(round(value.second * 1000 + value.microsecond / 1000.))
         year = value.year | 0x8000  # for some unknown reasons year has to be bit-or'ed with 0x8000
         month = value.month - 1     # for some unknown reasons HANA counts months starting from zero
