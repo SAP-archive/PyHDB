@@ -188,8 +188,21 @@ class Real(Type):
             return None
         return cls._struct.unpack(payload)[0]
 
+    @classmethod
+    def to_sql(cls, value):
+        return text_type(value)
 
-class Double(_IntType):
+    @classmethod
+    def prepare(cls, value):
+        if value is None:
+            pfield = struct.pack('b', 0)
+        else:
+            pfield = struct.pack('b', cls.type_code)
+            pfield += cls._struct.pack(float(value))
+        return pfield
+
+
+class Double(Type):
 
     type_code = type_codes.DOUBLE
     python_type = float
@@ -205,6 +218,15 @@ class Double(_IntType):
     @classmethod
     def to_sql(cls, value):
         return text_type(value)
+
+    @classmethod
+    def prepare(cls, value):
+        if value is None:
+            pfield = struct.pack('b', 0)
+        else:
+            pfield = struct.pack('b', cls.type_code)
+            pfield += cls._struct.pack(float(value))
+        return pfield
 
 
 class String(Type):
