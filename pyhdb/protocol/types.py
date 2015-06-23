@@ -317,7 +317,7 @@ class Date(Type):
     def prepare(cls, value):
         """Pack datetime value into proper binary format"""
         pfield = struct.pack('b', cls.type_code)
-        if isinstance(value, str):
+        if isinstance(value, string_types):
             value = datetime.datetime.strptime(value, "%Y-%m-%d")
         year = value.year | 0x8000  # for some unknown reasons year has to be bit-or'ed with 0x8000
         month = value.month - 1     # for some unknown reasons HANA counts months starting from zero
@@ -388,7 +388,7 @@ class Time(Type):
     def prepare(cls, value):
         """Pack time value into proper binary format"""
         pfield = struct.pack('b', cls.type_code)
-        if isinstance(value, str):
+        if isinstance(value, string_types):
             if "." in value:
                 value = datetime.datetime.strptime(value, "%H:%M:%S.%f")
             else:
@@ -423,7 +423,7 @@ class Timestamp(Type):
     def prepare(cls, value):
         """Pack datetime value into proper binary format"""
         pfield = struct.pack('b', cls.type_code)
-        if isinstance(value, str):
+        if isinstance(value, string_types):
             if "." in value:
                 value = datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S.%f")
             else:
