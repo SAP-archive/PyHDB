@@ -14,6 +14,7 @@
 
 # Test additional features of pyhdb.Connection
 
+import os
 import pytest
 
 from pyhdb.connection import Connection
@@ -59,4 +60,6 @@ def test_set_timeout_without_socket():
 
 
 def test_make_connection_from_pytest_ini():
+    if not os.path.isfile('pytest.ini'):
+        pytest.skip("Requires pytest.ini file")
     connection = pyhdb.connect.from_ini('pytest.ini')
