@@ -99,3 +99,12 @@ class TestIsolationBetweenConnections(object):
         cursor2 = connection_2.cursor()
         cursor2.execute("SELECT * FROM PYHDB_TEST_1")
         assert cursor2.fetchall() == [('connection_1',)]
+
+    def test_select_for_update(self, connection, test_table):
+        cursor = connection.cursor()
+        cursor.execute("INSERT INTO PYHDB_TEST_1 VALUES(%s)", ('test',))
+        connection.commit()
+
+        cursor.execute("SELECT * FROM PYHDB_TEST_1 FOR UPDATE")
+        assert cursor.fetchall() == [('test',)]
+

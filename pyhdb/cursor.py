@@ -214,7 +214,7 @@ class Cursor(object):
         parts = reply.segments[0].parts
         function_code = reply.segments[0].function_code
         if function_code == function_codes.SELECT:
-            self._handle_select(parts, parts[0])
+            self._handle_select(parts)
         elif function_code in function_codes.DML:
             self._handle_upsert(parts)
         elif function_code == function_codes.DDL:
@@ -318,19 +318,23 @@ class Cursor(object):
             )
             self.connection.send_request(request)
 
-    def _handle_select(self, parts, result_metadata):
+    def _handle_select(self, parts, result_metadata=None):
         """Handle reply messages from SELECT statements"""
         self.rowcount = -1
-        self.description, self._column_types = self._handle_result_metadata(result_metadata)
+        if result_metadata is not None:
+            # Select was prepared and we can use the already received metadata
+            self.description, self._column_types = self._handle_result_metadata(result_metadata)
 
         for part in parts:
             if part.kind == part_kinds.RESULTSETID:
                 self._resultset_id = part.value
+            elif part.kind == part_kinds.RESULTSETMETADATA:
+                self.description, self._column_types = self._handle_result_metadata(part)
             elif part.kind == part_kinds.RESULTSET:
                 self._buffer = part.unpack_rows(self._column_types, self.connection)
                 self._received_last_resultset_part = part.attribute & 1
                 self._executed = True
-            elif part.kind in (part_kinds.STATEMENTCONTEXT, part_kinds.RESULTSETMETADATA):
+            elif part.kind in (part_kinds.STATEMENTCONTEXT, part_kinds.TRANSACTIONFLAGS):
                 pass
             else:
                 raise InterfaceError("Prepared select statement response, unexpected part kind %d." % part.kind)
