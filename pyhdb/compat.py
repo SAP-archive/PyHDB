@@ -26,6 +26,7 @@ if PY2:
     unichr = unichr
     iter_range = xrange
     import ConfigParser as configparser
+    from itertools import izip
 else:
     text_type = str
     byte_type = bytes
@@ -34,6 +35,7 @@ else:
     unichr = chr
     iter_range = range
     import configparser
+    izip = zip
 
 # workaround for 'narrow' Python builds
 if sys.maxunicode <= 65535:

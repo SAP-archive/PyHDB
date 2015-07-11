@@ -15,12 +15,12 @@
 # Enable absolute import, otherwise the 'exceptions' module of stdlib will not be found
 from __future__ import absolute_import
 
-from exceptions import Warning
-
 
 class Error(Exception):
     pass
 
+class Warning(Warning):
+    pass
 
 class InterfaceError(Error):
     pass

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from itertools import izip
 import collections
 ###
 from pyhdb.protocol.message import RequestMessage
@@ -21,7 +20,7 @@ from pyhdb.protocol.types import escape_values, by_type_code
 from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, Parameters, WriteLobRequest
 from pyhdb.protocol.constants import message_types, function_codes, part_kinds
 from pyhdb.exceptions import ProgrammingError, InterfaceError, DatabaseError
-
+from pyhdb.compat import izip
 
 FORMAT_OPERATION_ERRORS = [
     'not enough arguments for format string',
@@ -34,7 +33,7 @@ def format_operation(operation, parameters=None):
         e_values = escape_values(parameters)
         try:
             operation = operation % e_values
-        except TypeError, msg:
+        except TypeError as msg:
             if str(msg) in FORMAT_OPERATION_ERRORS:
                 # Python DBAPI expects a ProgrammingError in this case
                 raise ProgrammingError(str(msg))
@@ -262,7 +261,7 @@ class Cursor(object):
         # First try safer hana-style parameter expansion:
         try:
             statement_id = self.prepare(statement)
-        except DatabaseError, msg:
+        except DatabaseError as msg:
             # Hana expansion failed, check message to be sure of reason:
             if 'incorrect syntax near "%"' not in str(msg):
                 # Probably some other error than related to string expansion -> raise an error

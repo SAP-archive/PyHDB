@@ -19,7 +19,6 @@ import collections
 import io
 import struct
 import logging
-from types import StringTypes
 from collections import namedtuple
 from weakref import WeakValueDictionary
 ###
@@ -29,8 +28,9 @@ from pyhdb.protocol import types
 from pyhdb.protocol import constants
 from pyhdb.protocol.types import by_type_code
 from pyhdb.exceptions import InterfaceError, DatabaseError, DataError
-from pyhdb.compat import is_text, iter_range, with_metaclass
+from pyhdb.compat import is_text, iter_range, with_metaclass, string_types
 from pyhdb.protocol.headers import ReadLobHeader, PartHeader, WriteLobHeader
+from pyhdb.protocol.constants import parameter_direction
 
 recv_log = logging.getLogger('receive')
 debug = recv_log.debug
@@ -230,7 +230,7 @@ class OutputParameters(Part):
         values = []
         for param in parameters_metadata:
             # Unpack OUT or INOUT parameters' values
-            if param.iotype != constants.parameter_direction.IN:
+            if param.iotype != parameter_direction.IN:
                 values.append( by_type_code[param.datatype].from_resultset(self.payload) )
         yield tuple(values)
 
@@ -435,7 +435,7 @@ class LobBuffer(object):
     def __init__(self, orig_data, DataType, lob_header_pos):
         self.orig_data = orig_data
         # Lob data can be either an instance of a Lob-class, or a string/unicode object, Encode properly:
-        if isinstance(orig_data, StringTypes):
+        if isinstance(orig_data, string_types):
             enc_data = DataType.encode_value(orig_data)
         else:
             # assume a LOB instance:
