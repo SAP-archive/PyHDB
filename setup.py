@@ -13,6 +13,7 @@
 # language governing permissions and limitations under the License.
 
 import os
+import codecs
 from setuptools import setup, find_packages
 
 source_location = os.path.abspath(os.path.dirname(__file__))
@@ -24,7 +25,7 @@ def get_version():
 
 
 def get_long_description():
-    with open(os.path.join(source_location, "README.rst")) as readme:
+    with codecs.open(os.path.join(source_location, "README.rst"), 'r', 'utf-8') as readme:
         return readme.read()
 
 setup(
