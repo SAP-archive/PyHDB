@@ -25,6 +25,7 @@ if PY2:
     int_types = (int, long)
     unichr = unichr
     iter_range = xrange
+    import ConfigParser as configparser
 else:
     text_type = str
     byte_type = bytes
@@ -32,6 +33,7 @@ else:
     int_types = (int,)
     unichr = chr
     iter_range = range
+    import configparser
 
 # workaround for 'narrow' Python builds
 if sys.maxunicode <= 65535:

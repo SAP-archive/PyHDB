@@ -15,7 +15,6 @@
 import os
 import logging
 import logging.config
-import ConfigParser
 
 this_dir = os.path.dirname(__file__)
 logging.config.fileConfig(os.path.join(this_dir, 'logging.conf'))
@@ -23,6 +22,7 @@ logging.config.fileConfig(os.path.join(this_dir, 'logging.conf'))
 from pyhdb.exceptions import *
 from pyhdb.connection import Connection
 from pyhdb.protocol.lobs import Blob, Clob, NClob
+from pyhdb.compat import configparser
 
 apilevel = "2.0"
 threadsafety = 2
@@ -55,7 +55,7 @@ def from_ini(ini_file, section=None):
     """
     if not os.path.exists(ini_file):
         raise RuntimeError('Could not find ini file %s' % ini_file)
-    cp = ConfigParser.ConfigParser()
+    cp = configparser.ConfigParser()
     cp.read(ini_file)
     if not cp.sections():
         raise RuntimeError('Could not find any section in ini file %s' % ini_file)
@@ -71,7 +71,7 @@ def from_ini(ini_file, section=None):
     for sec in sec_list:
         try:
             param_values = cp.items(sec)
-        except ConfigParser.NoSectionError:
+        except configparser.NoSectionError:
             continue
         params = dict(param_values)
         break
