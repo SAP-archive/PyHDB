@@ -162,25 +162,21 @@ def test_pack_bigint(input, expected):
     types.BigInt.prepare(input) == expected
 
 
-#
-# NOTE: packing for floats and doubles not yet implementd
-#
-# @pytest.mark.parametrize("input,expected", [
-#     (float("10.119999885559082"), b"\x85\xEB\x21\x41"),
-#     (float("-10.119999885559082"), b"\x85\xEB\x21\xC1"),
-#     ("-10.119999885559082", b"\x85\xEB\x21\xC1"),
-#     (u"-10.119999885559082", b"\x85\xEB\x21\xC1"),
-#     (None, b"\xFF\xFF\xFF\xFF"),
-# ])
-# def test_pack_real(input, expected):
-#     types.Real.prepare(input) == expected
-#
-#
-# @pytest.mark.parametrize("input,expected", [
-#     (float("10.12"), b"\x3D\x0A\xD7\xA3\x70\x3D\x24\x40"),
-#     (float("-10.12"), b"\x3D\x0A\xD7\xA3\x70\x3D\x24\xC0"),
-#     (None, b"\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF"),
-# ])
-# def test_pack_double(input, expected):
-#     types.Double.prepare(input) == expected
-#
+@pytest.mark.parametrize("input,expected", [
+    (float("10.119999885559082"), b"\x85\xEB\x21\x41"),
+    (float("-10.119999885559082"), b"\x85\xEB\x21\xC1"),
+    ("-10.119999885559082", b"\x85\xEB\x21\xC1"),
+    (u"-10.119999885559082", b"\x85\xEB\x21\xC1"),
+    (None, b"\xFF\xFF\xFF\xFF"),
+])
+def test_pack_real(input, expected):
+    types.Real.prepare(input) == expected
+
+
+@pytest.mark.parametrize("input,expected", [
+    (float("10.12"), b"\x3D\x0A\xD7\xA3\x70\x3D\x24\x40"),
+    (float("-10.12"), b"\x3D\x0A\xD7\xA3\x70\x3D\x24\xC0"),
+    (None, b"\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF"),
+])
+def test_pack_double(input, expected):
+    types.Double.prepare(input) == expected
