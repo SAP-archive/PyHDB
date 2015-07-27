@@ -18,6 +18,8 @@ import pytest
 
 import tests.helper
 
+from tests.helper import procedure_with_result_fixture
+
 # #############################################################################################################
 #                         Basic Stored Procedure test
 # #############################################################################################################
@@ -46,11 +48,8 @@ def test_PROC_ADD2(connection):
     #    print l
 
 @pytest.mark.hanatest
-def test_proc_with_results(connection):
-    connection.autocommit = False
+def test_proc_with_results(connection, procedure_with_result_fixture):
     cursor = connection.cursor()
-
-    tests.helper.create_procedures(cursor)
 
     # prepare call
     psid = cursor.prepare("CALL PYHDB_PROC_WITH_RESULT(?)")
@@ -61,8 +60,5 @@ def test_proc_with_results(connection):
     result = cursor.fetchall()
 
     assert result == [(2015,)]
-
-    # drop procedure
-    tests.helper.drop_procedures(cursor)
 
     cursor.close()
