@@ -321,7 +321,7 @@ class Date(Type):
 
     type_code = type_codes.DATE
     python_type = datetime.date
-    _struct = struct.Struct("<HBH")
+    _struct = struct.Struct("<HBB")
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
@@ -341,10 +341,12 @@ class Date(Type):
     @classmethod
     def prepare(cls, value):
         """Pack datetime value into proper binary format"""
-        # According to the docs setting year to 0x8000 indicates a NULL value for a date object
-        year = 0x8000 if value is None else value.year
         pfield = struct.pack('b', cls.type_code)
-        pfield += cls._struct.pack(year, value.month, value.day)
+        if isinstance(value, string_types):
+            value = datetime.datetime.strptime(value, "%Y-%m-%d")
+        year = value.year | 0x8000  # for some unknown reasons year has to be bit-or'ed with 0x8000
+        month = value.month - 1     # for some unknown reasons HANA counts months starting from zero
+        pfield += cls._struct.pack(year, month, value.day)
         return pfield
 
     @classmethod
@@ -391,7 +393,7 @@ class Time(Type):
 
     type_code = type_codes.TIME
     python_type = datetime.time
-    _struct = struct.Struct("<bbH")
+    _struct = struct.Struct("<BBH")
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
@@ -406,6 +408,20 @@ class Time(Type):
     @classmethod
     def to_sql(cls, value):
         return "'%s'" % value.strftime("%H:%M:%S")
+
+    @classmethod
+    def prepare(cls, value):
+        """Pack time value into proper binary format"""
+        pfield = struct.pack('b', cls.type_code)
+        if isinstance(value, string_types):
+            if "." in value:
+                value = datetime.datetime.strptime(value, "%H:%M:%S.%f")
+            else:
+                value = datetime.datetime.strptime(value, "%H:%M:%S")
+        millisecond = int(round(value.second * 1000 + value.microsecond / 1000.))
+        hour = value.hour | 0x80    # for some unknown reasons hour has to be bit-or'ed with 0x80
+        pfield += cls._struct.pack(hour, value.minute, millisecond)
+        return pfield
 
 
 class Timestamp(Type):
@@ -432,6 +448,11 @@ class Timestamp(Type):
     def prepare(cls, value):
         """Pack datetime value into proper binary format"""
         pfield = struct.pack('b', cls.type_code)
+        if isinstance(value, string_types):
+            if "." in value:
+                value = datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S.%f")
+            else:
+                value = datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
         millisecond = int(round(value.second * 1000 + value.microsecond / 1000.))
         year = value.year | 0x8000  # for some unknown reasons year has to be bit-or'ed with 0x8000
         month = value.month - 1     # for some unknown reasons HANA counts months starting from zero
