@@ -25,7 +25,7 @@ def exists_table(connection, table):
     return cursor.fetchone() is not None
 
 
-def create_table_fixture(request, connection, table, table_fields):
+def create_table_fixture(request, connection, table, table_fields, column_table=False):
     """
     Create table fixture for unittests
     :param request: pytest request object
@@ -38,7 +38,8 @@ def create_table_fixture(request, connection, table, table_fields):
         cursor.execute('DROP table "%s"' % table)
 
     assert not exists_table(connection, table)
-    cursor.execute('CREATE table "%s" (%s)' % (table, table_fields))
+    table_type = "COLUMN" if column_table else ""
+    cursor.execute('CREATE %s table "%s" (%s)' % (table_type, table, table_fields))
     if not exists_table(connection, table):
         pytest.skip("Couldn't create table %s" % table)
         return

@@ -229,15 +229,8 @@ class Double(Type):
         return pfield
 
 
-class String(Type):
-
-    type_code = (type_codes.CHAR, type_codes.VARCHAR, type_codes.NCHAR, type_codes.NVARCHAR,
-                 type_codes.STRING, type_codes.NSTRING)
-    python_type = string_types
-
-    ESCAPE_REGEX = re.compile(r"[\']")
-    ESCAPE_MAP = {"'": "''"}
-
+class MixinStringType(object):
+    """Mixin class for String types"""
     @staticmethod
     def get_length(payload):
         length_indicator = struct.unpack('B', payload.read(1))[0]
@@ -255,17 +248,10 @@ class String(Type):
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
-        length = String.get_length(payload)
+        length = MixinStringType.get_length(payload)
         if length is None:
             return None
         return payload.read(length).decode('cesu-8')
-
-    @classmethod
-    def to_sql(cls, value):
-        return "'%s'" % cls.ESCAPE_REGEX.sub(
-            lambda match: cls.ESCAPE_MAP.get(match.group(0)),
-            value
-        )
 
     @classmethod
     def prepare(cls, value, type_code=type_codes.CHAR):
@@ -292,14 +278,31 @@ class String(Type):
         return pfield
 
 
-class Binary(Type):
+class String(Type, MixinStringType):
+
+    type_code = (type_codes.CHAR, type_codes.VARCHAR, type_codes.NCHAR, type_codes.NVARCHAR,
+                 type_codes.STRING, type_codes.NSTRING)
+    python_type = string_types
+
+    ESCAPE_REGEX = re.compile(r"[\']")
+    ESCAPE_MAP = {"'": "''"}
+
+    @classmethod
+    def to_sql(cls, value):
+        return "'%s'" % cls.ESCAPE_REGEX.sub(
+            lambda match: cls.ESCAPE_MAP.get(match.group(0)),
+            value
+        )
+
+
+class Binary(Type, MixinStringType):
 
     type_code = (type_codes.BINARY, type_codes.VARBINARY, type_codes.BSTRING)
     python_type = byte_type
 
     @classmethod
     def from_resultset(cls, payload, connection=None):
-        length = String.get_length(payload)
+        length = MixinStringType.get_length(payload)
         if length is None:
             return None
         return byte_type(payload.read(length))
@@ -488,6 +491,19 @@ class BlobType(Type, MixinLobType):
     def encode_value(cls, value):
         """Return value if it is a string, otherwise properly encode unicode to binary unicode string"""
         return value if isinstance(value, str) else value.encode('utf8')
+
+
+class Geometry(Type, MixinStringType):
+    """Geometry type class"""
+    type_code = type_codes.BLOCATOR
+
+    @classmethod
+    def prepare(cls, value):
+        return MixinStringType.prepare(value, type_codes.STRING)
+
+    @classmethod
+    def to_sql(cls, value):
+        return text_type(value)
 
 
 def escape(value):
