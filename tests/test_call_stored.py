@@ -16,6 +16,10 @@
 
 import pytest
 
+import tests.helper
+
+from tests.helper import procedure_with_result_fixture
+
 # #############################################################################################################
 #                         Basic Stored Procedure test
 # #############################################################################################################
@@ -42,3 +46,19 @@ def test_PROC_ADD2(connection):
     assert result == [(7, 'A')]
     #for l in result:
     #    print l
+
+@pytest.mark.hanatest
+def test_proc_with_results(connection, procedure_with_result_fixture):
+    cursor = connection.cursor()
+
+    # prepare call
+    psid = cursor.prepare("CALL PYHDB_PROC_WITH_RESULT(?)")
+    ps = cursor.get_prepared_statement(psid)
+
+    # execute prepared statement
+    cursor.execute_prepared(ps, [{'OUTVAR': 0}])
+    result = cursor.fetchall()
+
+    assert result == [(2015,)]
+
+    cursor.close()
