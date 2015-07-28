@@ -191,7 +191,7 @@ class Cursor(object):
             elif function_code == function_codes.DDL:
                 # No additional handling is required
                 pass
-            elif function_code == function_codes.DBPROCEDURECALL:
+            elif function_code in (function_codes.DBPROCEDURECALL, function_codes.DBPROCEDURECALLWITHRESULT):
                 self._handle_dbproc_call(parts, prepared_statement._params_metadata) # resultset metadata set in prepare
             else:
                 raise InterfaceError("Invalid or unsupported function code received: %d" % function_code)
@@ -219,8 +219,10 @@ class Cursor(object):
         elif function_code == function_codes.DDL:
             # No additional handling is required
             pass
+        elif function_code in (function_codes.DBPROCEDURECALL, function_codes.DBPROCEDURECALLWITHRESULT):
+            self._handle_dbproc_call(parts, None)
         else:
-            raise InterfaceError("Invalid or unsupported function code received")
+            raise InterfaceError("Invalid or unsupported function code received: %d" % function_code)
 
     def execute(self, statement, parameters=None):
         """Execute statement on database
@@ -350,6 +352,14 @@ class Cursor(object):
             elif part.kind == part_kinds.OUTPUTPARAMETERS:
                 self._buffer = part.unpack_rows(parameters_metadata, self.connection)
                 self._received_last_resultset_part = True
+                self._executed = True
+            elif part.kind == part_kinds.RESULTSETMETADATA:
+                self.description, self._column_types = self._handle_result_metadata(part)
+            elif part.kind == part_kinds.RESULTSETID:
+                self._resultset_id = part.value
+            elif part.kind == part_kinds.RESULTSET:
+                self._buffer = part.unpack_rows(self._column_types, self.connection)
+                self._received_last_resultset_part = part.attribute & 1
                 self._executed = True
             else:
                 raise InterfaceError("Stored procedure call, unexpected part kind %d." % part.kind)

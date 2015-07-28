@@ -47,3 +47,26 @@ def create_table_fixture(request, connection, table, table_fields, column_table=
     def _close():
         cursor.execute('DROP table "%s"' % table)
     request.addfinalizer(_close)
+
+@pytest.fixture
+def procedure_with_result_fixture(request, connection):
+    cursor = connection.cursor()
+    # create temporary procedure
+    try:
+        cursor.execute("""CREATE PROCEDURE PYHDB_PROC_WITH_RESULT (OUT OUTVAR INTEGER) 
+            AS
+            BEGIN 
+              SELECT 2015 INTO OUTVAR FROM DUMMY;
+            END""")
+    except:
+        # procedure probably already existed
+        pass
+
+    def _close():
+        try:
+            cursor.execute("""DROP PROCEDURE PYHDB_PROC_WITH_RESULT""")
+        except:
+            # procedure didnt exist
+            pass
+
+    request.addfinalizer(_close)
