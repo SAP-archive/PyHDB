@@ -17,7 +17,6 @@ import logging
 import logging.config
 
 this_dir = os.path.dirname(__file__)
-logging.config.fileConfig(os.path.join(this_dir, 'logging.conf'))
 
 from pyhdb.exceptions import *
 from pyhdb.connection import Connection
