@@ -24,7 +24,7 @@ import mock
 
 from pyhdb.protocol import lobs
 from pyhdb.protocol.types import type_codes
-from pyhdb.compat import PY2
+from pyhdb.compat import PY2, PY3, iter_range, text_type
 from pyhdb.protocol import constants
 
 # #############################################################################################################
@@ -47,7 +47,7 @@ def test_blob_from_bytestring():
 
 
 def test_blob_from_string():
-    data = 'abc \x01 \x45 vv'
+    data = b'abc \x01 \x45 vv'
     blob = lobs.Blob(data)
     assert blob.getvalue() == data
 
@@ -80,11 +80,13 @@ def test_clob_from_ascii_string():
     data = string.ascii_letters
     clob = lobs.Clob(data)
     assert clob.getvalue() == data
-    assert clob.encode() == data
+    assert clob.encode() == data.encode('ascii')
 
 
 def test_clob_from_ascii_unicode():
     """Feeding unicode string works as long as only contains ascii chars"""
+    if not PY2:
+        pytest.skip('test only makes sense in PY2')
     data = string.ascii_letters.decode('ascii')
     clob = lobs.Clob(data)
     assert clob.getvalue() == data
@@ -97,18 +99,11 @@ def test_clob_from_nonascii_unicode_raises():
     with pytest.raises(UnicodeEncodeError):
         lobs.Clob(data)
 
-
-def test_clob_from_nonascii_string_raises():
-    if PY2:
-        pytest.skip('test only makes sense for io.StringIO in PY3')
-    data = u'朱の子ましけ'
-    utf8_data = data.encode('utf8')
-    with pytest.raises(UnicodeDecodeError):
-        lobs.Clob(utf8_data)
-
-
 def test_clob_from_string_io():
-    data = string.ascii_letters.decode('ascii')
+    if PY2:
+        data = string.ascii_letters.decode('ascii')
+    else:
+        data = string.ascii_letters
     text_io = lobs.CLOB_STRING_IO(data)
     clob = lobs.Clob(text_io)
     assert clob.getvalue() == data
@@ -124,6 +119,9 @@ def test_clob___str___method():
 
 def test_clob___unicode___method():
     """Test that the magic __unicode__ method returns a proper unicode string"""
+    if not PY2:
+        pytest.skip('test only makes sense in PY2')
+
     data = string.ascii_letters
     clob = lobs.Clob(data)
     assert type(unicode(clob)) == unicode
@@ -142,7 +140,7 @@ def test_nclob_from_ascii_string():
     data = string.ascii_letters
     nclob = lobs.NClob(data)
     assert nclob.getvalue() == data
-    assert nclob.encode() == data
+    assert nclob.encode() == data.encode('utf8')
 
 
 def test_nclob_from_utf8_string():
@@ -177,8 +175,23 @@ def test_nclob___str___method_for_ascii_chars():
     assert str_nclob == data
 
 
+def test_nclob__str___method_for_nonascii_chars():
+    """Test that the magic __str__ method raise Unicode error for non-ascii chars"""
+    if not PY3:
+        pytest.skip('test only makes sense in PY3')
+
+    data = u'朱の子ましけ'
+    nclob = lobs.NClob(data)
+    uni_nclob = str(nclob)
+    assert type(uni_nclob) == str
+    assert uni_nclob == data
+
+
 def test_nclob__str___method_for_nonascii_chars_raises():
     """Test that the magic __str__ method raise Unicode error for non-ascii chars"""
+    if not PY2:
+        pytest.skip('test only makes sense in PY2')
+
     data = u'朱の子ましけ'
     nclob = lobs.NClob(data)
     with pytest.raises(UnicodeEncodeError):
@@ -186,11 +199,14 @@ def test_nclob__str___method_for_nonascii_chars_raises():
 
 
 def test_nclob___unicode___method_for_nonascii_chars():
-    """Test that the magic __unicode__ method returns a proper unicode string"""
+    """Test that the magic __unicode__ method returns a proper text_type"""
+    if not PY2:
+        pytest.skip('test only makes sense in PY2')
+
     data = u'朱の子ましけ'
     nclob = lobs.NClob(data)
     uni_nclob = unicode(nclob)
-    assert type(uni_nclob) == unicode
+    assert type(uni_nclob) == text_type
     assert uni_nclob == data
 
 
@@ -211,26 +227,27 @@ MAX_LOB_DATA_LENGTH = 1024
 # Fixture: binary data for reading 2000 bytes blob:
 BLOB_HEADER = b'\x01\x02\x00\x00\xd0\x07\x00\x00\x00\x00\x00\x00\xd0\x07\x00\x00' \
               b'\x00\x00\x00\x00\x00\x00\x00\x00\xb2\xb9\x04\x00\x00\x04\x00\x00'
-BLOB_DATA = 'qXHUi0ChHWEWUgSBYhq3LvrgtOOjgGMubxPs3nbfUsRrFKVs0uTgQB4eJtQnPFjG1ZD2rB6qXt0QKvOpyRurpAWYWAH6Q3O2iaGA' \
-            'Ul0hwJhArNiB4vX3ZHJDC0TbF7crHPQktAzvkBf7SWtnnJ1OcC7pObioCIBp7iUoppenrMzwGoGdOeHCYJhTrVGN5ctRM1mYc3N9' \
-            'kIsBR6cbmKxVVdVruFdYCZfoAYHa23Mhif3i6U7EqvvOJ7WSCFLz4eeB6DKCROoCBawYqUmkbIYVo5oyfge61qhULjv5jH5HOp1v' \
-            'dvAfzpietVSUqmhDMZoR8Mb2jGmDBI1FMhxyfdiXXqjwFuFWGT4ecg46IfIWbppXWz9PYaf6c89rchV5VTRCwiIPCm32fcisBKLs' \
-            'Z3Abro7iDrsuGG8Xs8avn75wRiI5mGMbfHMys8uinhrCQwn7zT2jXOWNdpmh06mly1pMjZY0HWlpN9bOjomgsty4IFY4wDKBawiz' \
-            'nNNvCQOXeVREzYiMQfrgBYcG0GkfOzgxgLLnjIVkOjbcPMdwUgI0JLeru5Tg4Emuqq9LTYQYsHtfdGXDAAIbfz6GjxApeEpberxq' \
-            'yERi2bzH5m7mk7NdbkM0H3WJNDNauRj8cJ3JYxZ4sVFdr52ugmJl7ZuIH67flo0VcfYz0G2K36AjKo4SQRVXJyH2LWfcA20Jd7TT' \
-            'qv8m4W7SiHVgtBfmTdgFpemk8hYeLdwCGCGEWQffeSY6I64SrMLwVi0UpE1bWKuS8y5yZ4p0zZOxBQPvYG4H60gtraWmc9qbpZIg' \
-            '4HgHbMmB4N01WxOtnRuVwMnseDuEY6YrxVj9wd79nPnPQsbQTQuRdzOS2lrLL5rcMiLGnUQXt6E9GUIvqHyi53RpxWqEdIWhTeh3' \
-            'Fdt8bWYhUw4LgM3YX4ejeSXwlcNEat0mc7zWfha4EjFSKE6kTc9Xeowkrc5jjlHUkFXmwaOT469kWChc9ws4ew5mYSCKyYu7baWj' \
-            'XxaFO5IlPgKQhE1dKNJtkYjfSTGwmBY5Jiw1XEdl5Ae0hSFUq7OPjuEbnNg7KLIkiSizbLlbcEUGHT92ZjcnPStOUsPRN0Pa2x3o' \
-            'i1n8JXG3sfF2VAYaVrOAiQDWZ6W8rIfGB6a5YG2Gnf7rtvIfi0QP7mkV7BniBqFnQmmA7YAbFzkOYkIRUtqmry7IyXwIAE3N2NJ8' \
-            'r1f3APsdY4M4hXNziYRKn8XW3l26ukR32SC8UFNPJU8hUn548YxF8hNr8B0cJoYo6H1erhKPYpFpPlYI3HzhA3mVHSXfLzxE0E9a' \
-            'DjxCJ4frDUW8bBgG8T7FNnYv1rJGB1vwXMxYTs2feKq5QhvZJ5CG0JY432ghw4IrDklgu8UnyMZGJ3ZPowdYnsEHO5ukn3R3YWJ2' \
-            'jh0ywq8yNfw5c4EPs5578Kp2jV1NdyLCzAbkJrt3WVObxRaMmGD0WSFSLxEQ8p2Uz2f6AmQFPvfWnKnv0MNu8rQAzNOiuPL1x63Z' \
-            'UVilHtB7uAcfy8OEGwDSzeD0b8OhEVOZREXYfQQReD65E0r4zGfi5QLnAcu81l4BdvkIeuWuNpZysH5sxl9t9b1OSUNc6RYfiwmu' \
-            'zvNOJyr2WY4hItnGXncV3kcRzq4BhhdtrxCwYFr482HofG9id9V5QBXO5x9y2zyUXEPdvh3UESyAa8xmvEXJHLO1EXvW1cFPCJGw' \
-            'isQZXgVtvPSlkd8Eal4l6weKNMX8LXbuZdFAfIWeEPkeAIgboeuUAYJSFH4UPg4a0vp0tzXKRgqaVcAZl81CjrrGm5fBw3r1mDT3' \
-            'IYPguIyGDs8xz4QvMjV4SPGWxkRrCrZgbCbO2t2PM6czC49c5FLbw3QX3UzinDaOumhJtzMpmAPUVjzX0cPiDalsmkxIb1Razz4e' \
-            '1cdPATFx3vFelO8KOMurkMxFZKB0tWDjUWOGuQ4hiBu29TXAbR7Q9sxj8erB8omv5R4JyHivVz4DdQ6rWrVccsepgCI1Oydmfy6G'
+BLOB_DATA = b'qXHUi0ChHWEWUgSBYhq3LvrgtOOjgGMubxPs3nbfUsRrFKVs0uTgQB4eJtQnPFjG1ZD2rB6qXt0QKvOpyRurpAWYWAH6Q3O2iaGA' \
+            b'Ul0hwJhArNiB4vX3ZHJDC0TbF7crHPQktAzvkBf7SWtnnJ1OcC7pObioCIBp7iUoppenrMzwGoGdOeHCYJhTrVGN5ctRM1mYc3N9' \
+            b'kIsBR6cbmKxVVdVruFdYCZfoAYHa23Mhif3i6U7EqvvOJ7WSCFLz4eeB6DKCROoCBawYqUmkbIYVo5oyfge61qhULjv5jH5HOp1v' \
+            b'dvAfzpietVSUqmhDMZoR8Mb2jGmDBI1FMhxyfdiXXqjwFuFWGT4ecg46IfIWbppXWz9PYaf6c89rchV5VTRCwiIPCm32fcisBKLs' \
+            b'Z3Abro7iDrsuGG8Xs8avn75wRiI5mGMbfHMys8uinhrCQwn7zT2jXOWNdpmh06mly1pMjZY0HWlpN9bOjomgsty4IFY4wDKBawiz' \
+            b'nNNvCQOXeVREzYiMQfrgBYcG0GkfOzgxgLLnjIVkOjbcPMdwUgI0JLeru5Tg4Emuqq9LTYQYsHtfdGXDAAIbfz6GjxApeEpberxq' \
+            b'yERi2bzH5m7mk7NdbkM0H3WJNDNauRj8cJ3JYxZ4sVFdr52ugmJl7ZuIH67flo0VcfYz0G2K36AjKo4SQRVXJyH2LWfcA20Jd7TT' \
+            b'qv8m4W7SiHVgtBfmTdgFpemk8hYeLdwCGCGEWQffeSY6I64SrMLwVi0UpE1bWKuS8y5yZ4p0zZOxBQPvYG4H60gtraWmc9qbpZIg' \
+            b'4HgHbMmB4N01WxOtnRuVwMnseDuEY6YrxVj9wd79nPnPQsbQTQuRdzOS2lrLL5rcMiLGnUQXt6E9GUIvqHyi53RpxWqEdIWhTeh3' \
+            b'Fdt8bWYhUw4LgM3YX4ejeSXwlcNEat0mc7zWfha4EjFSKE6kTc9Xeowkrc5jjlHUkFXmwaOT469kWChc9ws4ew5mYSCKyYu7baWj' \
+            b'XxaFO5IlPgKQhE1dKNJtkYjfSTGwmBY5Jiw1XEdl5Ae0hSFUq7OPjuEbnNg7KLIkiSizbLlbcEUGHT92ZjcnPStOUsPRN0Pa2x3o' \
+            b'i1n8JXG3sfF2VAYaVrOAiQDWZ6W8rIfGB6a5YG2Gnf7rtvIfi0QP7mkV7BniBqFnQmmA7YAbFzkOYkIRUtqmry7IyXwIAE3N2NJ8' \
+            b'r1f3APsdY4M4hXNziYRKn8XW3l26ukR32SC8UFNPJU8hUn548YxF8hNr8B0cJoYo6H1erhKPYpFpPlYI3HzhA3mVHSXfLzxE0E9a' \
+            b'DjxCJ4frDUW8bBgG8T7FNnYv1rJGB1vwXMxYTs2feKq5QhvZJ5CG0JY432ghw4IrDklgu8UnyMZGJ3ZPowdYnsEHO5ukn3R3YWJ2' \
+            b'jh0ywq8yNfw5c4EPs5578Kp2jV1NdyLCzAbkJrt3WVObxRaMmGD0WSFSLxEQ8p2Uz2f6AmQFPvfWnKnv0MNu8rQAzNOiuPL1x63Z' \
+            b'UVilHtB7uAcfy8OEGwDSzeD0b8OhEVOZREXYfQQReD65E0r4zGfi5QLnAcu81l4BdvkIeuWuNpZysH5sxl9t9b1OSUNc6RYfiwmu' \
+            b'zvNOJyr2WY4hItnGXncV3kcRzq4BhhdtrxCwYFr482HofG9id9V5QBXO5x9y2zyUXEPdvh3UESyAa8xmvEXJHLO1EXvW1cFPCJGw' \
+            b'isQZXgVtvPSlkd8Eal4l6weKNMX8LXbuZdFAfIWeEPkeAIgboeuUAYJSFH4UPg4a0vp0tzXKRgqaVcAZl81CjrrGm5fBw3r1mDT3' \
+            b'IYPguIyGDs8xz4QvMjV4SPGWxkRrCrZgbCbO2t2PM6czC49c5FLbw3QX3UzinDaOumhJtzMpmAPUVjzX0cPiDalsmkxIb1Razz4e' \
+            b'1cdPATFx3vFelO8KOMurkMxFZKB0tWDjUWOGuQ4hiBu29TXAbR7Q9sxj8erB8omv5R4JyHivVz4DdQ6rWrVccsepgCI1Oydmfy6G'
+BLOB_DATA_EMPTY = b''
 
 # Fixture: binary data for reading 1500 character CLOB (ascii character LOB):
 CLOB_HEADER = b'\x00\x02\x00\x00\xdd\x05\x00\x00\x00\x00\x00\x00\xdd\x05\x00\x00' \
@@ -251,25 +268,27 @@ CLOB_DATA = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesq
             'purus. Maecenas quis urna et quam blandit vulputate et nec odio. Nullam posuere placerat turpis, non ' \
             'luctus nulla. Vestibulum efficitur odio sem, eu molestie sem malesuada ut. Nulla feugiat nibh tortor, ' \
             'et dapibus libero aliquet in. Aenean eleifend mauris eget lacus volutpat, id euismod metus.'
+BIN_CLOB_DATA = CLOB_DATA.encode('ascii')
+CLOB_DATA_EMPTY = ''
 
 # Fixture; binary data for reading 1500 bytes (500 character) NCLOB (unicode character LOB):
 NCLOB_HEADER = b'\x00\x02\x00\x00\xd0\x07\x00\x00\x00\x00\x00\x00\x70\x17\x00\x00' \
                b'\x00\x00\x00\x00\x05\x00\x00\x00\xb7\xef\x04\x00\x00\x0c\x00\x00'
 NCLOB_DATA = u'朱の子ましける日におえつかうまつらずはしにさはる事侍りてして延光雀院朝臣につかは野の若菜も日は小松引' * 40
-
 BIN_NCLOB_DATA = NCLOB_DATA.encode('utf8')
+NCLOB_DATA_EMPTY = u''
 
-lob_params = pytest.mark.parametrize("type_code, lob_header, bin_lob_data, lob_data", [
-    (type_codes.BLOB, BLOB_HEADER, BLOB_DATA, BLOB_DATA),
-    (type_codes.CLOB, CLOB_HEADER, CLOB_DATA, CLOB_DATA),
-    (type_codes.NCLOB, NCLOB_HEADER, BIN_NCLOB_DATA, NCLOB_DATA),
+lob_params = pytest.mark.parametrize("type_code, lob_header, bin_lob_data, lob_data, lob_data_empty", [
+    (type_codes.BLOB, BLOB_HEADER, BLOB_DATA, BLOB_DATA, BLOB_DATA_EMPTY),
+    (type_codes.CLOB, CLOB_HEADER, BIN_CLOB_DATA, CLOB_DATA, CLOB_DATA_EMPTY),
+    (type_codes.NCLOB, NCLOB_HEADER, BIN_NCLOB_DATA, NCLOB_DATA, NCLOB_DATA_EMPTY),
 ])
 
 
 # ### Test of initializing and reading LOB instances (w/o db) #####################################
 
 @lob_params
-def test_lob_init_and_more(type_code, lob_header, bin_lob_data, lob_data):
+def test_lob_init_and_more(type_code, lob_header, bin_lob_data, lob_data, lob_data_empty):
     _LobClass = lobs.LOB_TYPE_CODE_MAP[type_code]
     lob = _LobClass(lob_data)
     assert lob.type_code == type_code
@@ -277,7 +296,7 @@ def test_lob_init_and_more(type_code, lob_header, bin_lob_data, lob_data):
     assert len(lob) == len(lob_data)
     assert lob.read() == lob_data
     assert lob.tell() == len(lob_data)
-    assert lob.read(5) == ''
+    assert lob.read(5) == lob_data_empty
     # go back to begging of lob, and just read three chars:
     assert lob.seek(0) == 0
     assert lob.read(3) == lob_data[:3]
@@ -287,7 +306,7 @@ def test_lob_init_and_more(type_code, lob_header, bin_lob_data, lob_data):
 # ### Test of reading of LOB data/parsing header ##################################################
 
 @lob_params
-def test_read_lob(type_code, lob_header, bin_lob_data, lob_data):
+def test_read_lob(type_code, lob_header, bin_lob_data, lob_data, lob_data_empty):
     """Read/parse a LOB with given payload (data)"""
     payload = io.BytesIO(lob_header + bin_lob_data)
     lob = lobs.from_payload(type_code, payload, None)
@@ -307,8 +326,23 @@ def test_read_lob(type_code, lob_header, bin_lob_data, lob_data):
         (_ExpectedLobClass.__name__, lob.length, lob._current_lob_length)
 
 
-def test_read_lob__str__method():
+def test_read_lob__str__method_python3():
     """Read/parse a LOB with given payload (data) and check ___str__ method"""
+    if PY2:
+        pytest.skip("See test_read_lob__str__method_python2")
+
+    payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
+    lob = lobs.from_payload(type_codes.BLOB, payload, None)
+    len = lob._lob_header.byte_length
+    assert str(lob._lob_header) == "<ReadLobHeader type: 1, options 2 (data_included), charlength: %d, bytelength: " \
+                                   "%d, locator_id: b'\\x00\\x00\\x00\\x00\\xb2\\xb9\\x04\\x00', chunklength: 1024>" % \
+                                   (len, len)
+
+def test_read_lob__str__method_python2():
+    """Read/parse a LOB with given payload (data) and check ___str__ method"""
+    if PY3:
+        pytest.skip("See test_read_lob__str__method_python3")
+
     payload = io.BytesIO(BLOB_HEADER + BLOB_DATA)
     lob = lobs.from_payload(type_codes.BLOB, payload, None)
     len = lob._lob_header.byte_length
@@ -316,9 +350,8 @@ def test_read_lob__str__method():
                                    "%d, locator_id: '\\x00\\x00\\x00\\x00\\xb2\\xb9\\x04\\x00', chunklength: 1024>" % \
                                    (len, len)
 
-
 @lob_params
-def test_blob_io_functions(type_code, lob_header, bin_lob_data, lob_data):
+def test_blob_io_functions(type_code, lob_header, bin_lob_data, lob_data, lob_data_empty):
     """Test that io functionality (read/seek/getvalue()/...) works fine
     Stay below the 1024 item range when reading to avoid lazy loading of additional lob data from DB.
     This feature is tested in a separate unittest.
@@ -339,7 +372,7 @@ def test_blob_io_functions(type_code, lob_header, bin_lob_data, lob_data):
 
 @mock.patch('pyhdb.protocol.lobs.Lob._make_read_lob_request')
 @lob_params
-def test_blob_read_triggers_further_loading(_make_read_lob_request, type_code, lob_header, bin_lob_data, lob_data):
+def test_blob_read_triggers_further_loading(_make_read_lob_request, type_code, lob_header, bin_lob_data, lob_data, lob_data_empty):
     """Test that reading beyond currently available data (> 1024 items) triggers a READLOB request"""
     return_value = lob_data[1024:1024 + 100]
     _ExpectedLobClass = lobs.LOB_TYPE_CODE_MAP[type_code]
@@ -436,7 +469,7 @@ def test_select_single_blob_row(connection, test_table, content_table):
     assert isinstance(blob, lobs.Blob)
     assert isinstance(clob, lobs.Clob)
     assert isinstance(nclob, lobs.NClob)
-    assert blob.read() == 'blob0'
+    assert blob.read() == b'blob0'
     assert clob.read() == 'clob0'
     assert nclob.read() == 'nclob0'
 
@@ -468,7 +501,7 @@ def test_insert_single_string_blob_row(connection, test_table):
 def test_insert_single_object_blob_row(connection, test_table):
     """Insert a single row providing blob data as LOB object (argument order: blob, name)"""
     cursor = connection.cursor()
-    blob_data = 'ab \0x1 \0x17 yz'
+    blob_data = b'ab \0x1 \0x17 yz'
     blob_obj = lobs.Blob(blob_data)
     cursor.execute("insert into %s (fblob, name) values (:1, :2)" % TABLE, [blob_obj, 'blob1'])
     blob = cursor.execute("select fblob from %s where name='blob1' " % TABLE).fetchone()[0]
@@ -522,7 +555,7 @@ def test_insert_single_object_nclob_row(connection, test_table):
 def test_insert_single_blob_and_clob_row(connection, test_table):
     """Insert a single row providing blob (as string) and clob (as LOB obj) (argument order: blob, name, clob)"""
     cursor = connection.cursor()
-    blob_data = 'ab \0x1 \0x17 yz'
+    blob_data = b'ab \0x1 \0x17 yz'
     clob_data = string.ascii_letters
     clob_obj = lobs.Clob(clob_data)
     cursor.execute("insert into %s (fblob, name, fclob) values (:1, :2, :3)" % TABLE, [blob_data, 'blob1', clob_obj])
@@ -561,12 +594,18 @@ def test_insert_multiple_clob_and_nclob_rows(connection, test_table):
 
     n_name, n_nclob, n_clob = rows[1]
     assert n_name == 'blob2'
-    assert n_nclob.read() == nclob_data2.decode('utf8')
+    if PY2:
+        assert n_nclob.read() == nclob_data2.decode('utf8')
+    else:
+        assert n_nclob.read() == nclob_data2
     assert n_clob.read() == clob_data2
 
     n_name, n_nclob, n_clob = rows[2]
     assert n_name == 'blob3'
-    assert n_nclob.read() == nclob_data3.decode('utf8')
+    if PY2:
+        assert n_nclob.read() == nclob_data3.decode('utf8')
+    else:
+        assert n_nclob.read() == nclob_data3
     assert n_clob.read() == clob_data3
 
 
@@ -594,7 +633,7 @@ def test_insert_two_large_lobs_via_writelob_requests(connection, test_table):
     Check that such a large BLOBs are written correctly.
     """
     bigblob = os.urandom(2 * constants.MAX_SEGMENT_SIZE + 1000)
-    bigclob = ''.join(random.choice(string.ascii_letters) for x in xrange(2 * constants.MAX_SEGMENT_SIZE))
+    bigclob = ''.join(random.choice(string.ascii_letters) for x in iter_range(2 * constants.MAX_SEGMENT_SIZE))
     cursor = connection.cursor()
     cursor.execute("insert into %s (fblob, name, fclob) values (:1, :2, :3)" % TABLE, [bigblob, 'blob1', bigclob])
     connection.commit()
@@ -613,8 +652,8 @@ def test_multiple_insert_four_large_lobs_via_writelob_requests(connection, test_
     """
     bigblob1 = os.urandom(2 * constants.MAX_SEGMENT_SIZE + 1000)
     bigblob2 = os.urandom(2 * constants.MAX_SEGMENT_SIZE + 1000)
-    bigclob1 = ''.join(random.choice(string.ascii_letters) for x in xrange(2 * constants.MAX_SEGMENT_SIZE))
-    bigclob2 = ''.join(random.choice(string.ascii_letters) for x in xrange(2 * constants.MAX_SEGMENT_SIZE))
+    bigclob1 = ''.join(random.choice(string.ascii_letters) for x in iter_range(2 * constants.MAX_SEGMENT_SIZE))
+    bigclob2 = ''.join(random.choice(string.ascii_letters) for x in iter_range(2 * constants.MAX_SEGMENT_SIZE))
     cursor = connection.cursor()
     cursor.executemany("insert into %s (fblob, name, fclob) values (:1, :2, :3)" % TABLE,
                        [(bigblob1, 'blob1', bigclob1),

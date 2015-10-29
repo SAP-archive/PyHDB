@@ -81,10 +81,13 @@ class PreparedStatement(object):
     def __iter__(self):
         return self
 
-    def __nonzero__(self):
+    def __bool__(self):
         return self._iter_row_count < self._num_rows
 
-    def next(self):
+    # Python 2.7 compat
+    __nonzero__ = __bool__
+
+    def __next__(self):
         if self._iter_row_count == self._num_rows:
             raise StopIteration()
 
@@ -99,6 +102,9 @@ class PreparedStatement(object):
         row_params = [self.ParamTuple(p.id, p.datatype, p.length, parameters[p.id]) for p in self._params_metadata]
         self._iter_row_count += 1
         return row_params
+
+    # Python 2.7 compat
+    next = __next__
 
     def back(self):
         assert self._iter_row_count > 0, 'already stepped back to beginning of iterator data'
@@ -392,7 +398,7 @@ class Cursor(object):
         cnt = 0
         while cnt != size:
             try:
-                result.append(self._buffer.next())
+                result.append(next(self._buffer))
                 cnt += 1
             except StopIteration:
                 break

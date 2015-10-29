@@ -19,7 +19,7 @@ from pyhdb.protocol.message import RequestMessage
 from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.constants import message_types, type_codes
 from pyhdb.protocol.parts import ReadLobRequest
-from pyhdb.compat import PY2, PY3
+from pyhdb.compat import PY2, PY3, byte_type
 
 if PY2:
     # Depending on the Python version we use different underlying containers for CLOB strings
@@ -270,6 +270,9 @@ class NClob(_CharLob):
         if PY2 and isinstance(init_value, str):
             # io.String() only accepts unicode values, so do necessary conversion here:
             init_value = init_value.decode(self.encoding)
+        if PY3 and isinstance(init_value, byte_type):
+            init_value = init_value.decode(self.encoding)
+
         return io.StringIO(init_value)
 
 

@@ -21,7 +21,7 @@ import pytest
 ###
 from pyhdb.protocol import types
 from pyhdb.exceptions import InterfaceError
-from pyhdb.compat import byte_type
+from pyhdb.compat import byte_type, iter_range
 
 
 # ########################## Test value unpacking #####################################
@@ -127,7 +127,7 @@ def test_table(request, connection):
 def test_insert_string(connection, test_table):
     """Insert string into table"""
     cursor = connection.cursor()
-    large_string = ''.join(random.choice(string.ascii_letters) for _ in xrange(5000))
+    large_string = ''.join(random.choice(string.ascii_letters) for _ in iter_range(5000))
     cursor.execute("insert into %s (name) values (:1)" % TABLE, [large_string])
     connection.commit()
     cursor = connection.cursor()
