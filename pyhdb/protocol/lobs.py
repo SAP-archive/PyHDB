@@ -39,7 +39,7 @@ else:
     CLOB_STRING_IO = io.StringIO
 
 
-recv_log = logging.getLogger('receive')
+logger = logging.getLogger('pyhdb')
 
 SEEK_SET = io.SEEK_SET
 SEEK_CUR = io.SEEK_CUR
@@ -58,7 +58,7 @@ def from_payload(type_code, payload, connection):
         data = payload.read(lob_header.chunk_length)
         _LobClass = LOB_TYPE_CODE_MAP[type_code]
         lob = _LobClass.from_payload(data, lob_header, connection)
-        recv_log.debug('Lob Header %r' % lob)
+        logger.debug('Lob Header %r' % lob)
     return lob
 
 
@@ -151,7 +151,7 @@ class Lob(object):
 
     def _read_missing_lob_data_from_db(self, readoffset, readlength):
         """Read LOB request part from database"""
-        recv_log.debug('Reading missing lob data from db. Offset: %d, readlength: %d' % (readoffset, readlength))
+        logger.debug('Reading missing lob data from db. Offset: %d, readlength: %d' % (readoffset, readlength))
         lob_data = self._make_read_lob_request(readoffset, readlength)
 
         # make sure we really got as many items (not bytes!) as requested:

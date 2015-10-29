@@ -25,8 +25,8 @@ from pyhdb.protocol.headers import RequestSegmentHeader, ReplySegmentHeader
 from pyhdb.protocol.constants import segment_kinds
 
 
-recv_log = logging.getLogger('receive')
-debug = recv_log.debug
+logger = logging.getLogger('pyhdb')
+debug = logger.debug
 
 
 class BaseSegment(object):

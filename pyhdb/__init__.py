@@ -13,10 +13,6 @@
 # limitations under the License.
 
 import os
-import logging
-import logging.config
-
-this_dir = os.path.dirname(__file__)
 
 from pyhdb.exceptions import *
 from pyhdb.connection import Connection

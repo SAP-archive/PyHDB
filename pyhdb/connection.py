@@ -31,8 +31,8 @@ INITIALIZATION_BYTES = bytearray([
     255, 255, 255, 255, 4, 20, 0, 4, 1, 0, 0, 1, 1, 1
 ])
 
-recv_log = logging.getLogger('receive')
-debug = recv_log.debug
+logger = logging.getLogger('pyhdb')
+debug = logger.debug
 version_struct = struct.Struct('<bH')
 
 

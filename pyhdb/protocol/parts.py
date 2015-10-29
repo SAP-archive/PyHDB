@@ -32,8 +32,8 @@ from pyhdb.compat import is_text, iter_range, with_metaclass, string_types, byte
 from pyhdb.protocol.headers import ReadLobHeader, PartHeader, WriteLobHeader
 from pyhdb.protocol.constants import parameter_direction
 
-recv_log = logging.getLogger('receive')
-debug = recv_log.debug
+logger = logging.getLogger('pyhdb')
+debug = logger.debug
 
 PART_MAPPING = WeakValueDictionary()
 

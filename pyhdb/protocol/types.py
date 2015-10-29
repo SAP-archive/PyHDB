@@ -29,8 +29,8 @@ from pyhdb.compat import PY26, PY2, PY3, with_metaclass, iter_range, int_types, 
 from pyhdb.protocol.headers import WriteLobHeader
 
 
-recv_log = logging.getLogger('receive')
-debug = recv_log.debug
+logger = logging.getLogger('pyhdb')
+debug = logger.debug
 
 # Dictionary: keys: numeric type_code, values: Type-(sub)classes (from below)
 by_type_code = WeakValueDictionary()
