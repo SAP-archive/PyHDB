@@ -27,7 +27,7 @@ from pyhdb.lib.stringlib import humanhexlify
 from pyhdb.protocol import types
 from pyhdb.protocol import constants
 from pyhdb.protocol.types import by_type_code
-from pyhdb.exceptions import InterfaceError, DatabaseError, DataError
+from pyhdb.exceptions import InterfaceError, DatabaseError, DataError, IntegrityError
 from pyhdb.compat import is_text, iter_range, with_metaclass, string_types, byte_type
 from pyhdb.protocol.headers import ReadLobHeader, PartHeader, WriteLobHeader
 from pyhdb.protocol.constants import parameter_direction
@@ -250,7 +250,11 @@ class Error(Part):
         for _ in iter_range(argument_count):
             code, position, textlength, level, sqlstate = cls.part_struct.unpack(payload.read(cls.part_struct.size))
             errortext = payload.read(textlength).decode('utf-8')
-            errors.append(DatabaseError(errortext, code))
+            if code == 301:
+                # Unique constraint violated
+                errors.append(IntegrityError(errortext, code))
+            else:
+                errors.append(DatabaseError(errortext, code))
         return tuple(errors),
 
 
