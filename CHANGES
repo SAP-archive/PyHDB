@@ -1,6 +1,10 @@
 Changelog
 =========
 
+0.3.1
+-----
+- Raise IntegrityError on unique constraint violation
+
 0.3.0
 -----
 - Added LOB_WRITE requests allowing to insert or update LOBs of arbitrary size
