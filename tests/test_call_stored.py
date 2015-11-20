@@ -18,7 +18,7 @@ import pytest
 
 import tests.helper
 
-from tests.helper import procedure_with_result_fixture
+from tests.helper import procedure_add2_fixture, procedure_with_result_fixture
 
 # #############################################################################################################
 #                         Basic Stored Procedure test
@@ -26,17 +26,10 @@ from tests.helper import procedure_with_result_fixture
 
 # ### One or more scalar parameters, OUT or INOUT
 @pytest.mark.hanatest
-def test_PROC_ADD2(connection):
+def test_PROC_ADD2(connection, procedure_add2_fixture):
     cursor = connection.cursor()
 
-    #sql_to_prepare = 'select top ? * from test.employees where emp_no > ?'
-    #params = [2, 10500]
-
-    #sql_to_prepare = 'call PROC_ADD (?, ?, ?)'
-    #params = [1, 2, None]
-    #params = {'A':1, 'B':2, 'C':None}
-
-    sql_to_prepare = 'call PROC_ADD2 (?, ?, ?, ?)'
+    sql_to_prepare = 'call PYHDB_PROC_ADD2 (?, ?, ?, ?)'
     params = [1, 2, None, None]
     params = {'A':2, 'B':5, 'C':None, 'D': None}
     psid = cursor.prepare(sql_to_prepare)
@@ -44,8 +37,6 @@ def test_PROC_ADD2(connection):
     cursor.execute_prepared(ps, [params])
     result = cursor.fetchall()
     assert result == [(7, 'A')]
-    #for l in result:
-    #    print l
 
 @pytest.mark.hanatest
 def test_proc_with_results(connection, procedure_with_result_fixture):

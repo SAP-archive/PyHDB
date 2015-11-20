@@ -24,13 +24,13 @@ from weakref import WeakValueDictionary
 
 from pyhdb.protocol.constants import type_codes
 from pyhdb.exceptions import InterfaceError
-from pyhdb.compat import PY26, PY3, with_metaclass, iter_range, int_types, \
+from pyhdb.compat import PY26, PY2, PY3, with_metaclass, iter_range, int_types, \
     string_types, byte_type, text_type
 from pyhdb.protocol.headers import WriteLobHeader
 
 
-recv_log = logging.getLogger('receive')
-debug = recv_log.debug
+logger = logging.getLogger('pyhdb')
+debug = logger.debug
 
 # Dictionary: keys: numeric type_code, values: Type-(sub)classes (from below)
 by_type_code = WeakValueDictionary()
@@ -260,7 +260,7 @@ class MixinStringType(object):
             # length indicator
             pfield += struct.pack('B', 255)
         else:
-            if not isinstance(value, py_types.StringTypes):
+            if not isinstance(value, string_types):
                 # Value is provided e.g. as integer, but a string is actually required. Try proper casting into string:
                 value = text_type(value)
             value = value.encode('cesu-8')
@@ -491,7 +491,7 @@ class ClobType(Type, MixinLobType):
     @classmethod
     def encode_value(cls, value):
         """Return value if it is a string, otherwise properly encode unicode to binary ascii string"""
-        return value if isinstance(value, str) else value.encode('ascii')
+        return value.encode('ascii') if isinstance(value, string_types) else value
 
 
 class NClobType(Type, MixinLobType):
@@ -501,7 +501,7 @@ class NClobType(Type, MixinLobType):
     @classmethod
     def encode_value(cls, value):
         """Return value if it is a string, otherwise properly encode unicode to binary unicode string"""
-        return value if isinstance(value, str) else value.encode('utf8')
+        return value.encode('utf8') if isinstance(value, text_type) else value
 
 
 class BlobType(Type, MixinLobType):
@@ -511,8 +511,7 @@ class BlobType(Type, MixinLobType):
     @classmethod
     def encode_value(cls, value):
         """Return value if it is a string, otherwise properly encode unicode to binary unicode string"""
-        return value if isinstance(value, str) else value.encode('utf8')
-
+        return value.encode('utf8') if isinstance(value, text_type) else value
 
 class Geometry(Type, MixinStringType):
     """Geometry type class"""

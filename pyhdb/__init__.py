@@ -13,11 +13,6 @@
 # limitations under the License.
 
 import os
-import logging
-import logging.config
-
-this_dir = os.path.dirname(__file__)
-logging.config.fileConfig(os.path.join(this_dir, 'logging.conf'))
 
 from pyhdb.exceptions import *
 from pyhdb.connection import Connection
@@ -86,7 +81,7 @@ def from_ini(ini_file, section=None):
         return param[5:] if param.startswith('hana_') else param
 
     valid_keys = ('host', 'port', 'user', 'password')
-    clean_params = dict(('%s' % rm_prefix(key), val) for key, val in params.iteritems() if rm_prefix(key) in valid_keys)
+    clean_params = dict(('%s' % rm_prefix(key), val) for key, val in params.items() if rm_prefix(key) in valid_keys)
 
     # make actual connection:
     return connect(**clean_params)

@@ -37,7 +37,7 @@ setup(
     author="Christoph Heer",
     author_email="christoph.heer@sap.com",
     description="SAP HANA Database Client for Python",
-    include_package_data=True,   # e.g. for logging.conf
+    include_package_data=True,
     long_description=get_long_description(),
     packages=find_packages(exclude=("tests", "tests.*",)),
     zip_safe=False,
@@ -60,8 +60,5 @@ setup(
         'Topic :: Database :: Front-Ends',
         'Topic :: Software Development',
         'Topic :: Software Development :: Libraries :: Python Modules',
-    ],
-    package_data={
-        'pyhdb': ['logging.conf']
-    }
+    ]
 )

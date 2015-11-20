@@ -15,7 +15,7 @@
 import pytest
 
 from pyhdb.cursor import format_operation
-from pyhdb.exceptions import ProgrammingError
+from pyhdb.exceptions import ProgrammingError, IntegrityError
 import tests.helper
 
 TABLE = 'PYHDB_TEST_1'
@@ -273,3 +273,12 @@ def test_cursor_executemany_hana_expansion(connection, test_table_1):
     cursor.execute("SELECT * FROM %s" % TABLE)
     result = cursor.fetchall()
     assert result == [('Statement 1',), ('Statement 2',)]
+
+@pytest.mark.hanatest
+def test_IntegrityError_on_unique_constraint_violation(connection, test_table_1):
+    cursor = connection.cursor()
+    cursor.execute("ALTER TABLE %s ADD CONSTRAINT prim_key PRIMARY KEY (TEST)" % TABLE)
+
+    cursor.execute("INSERT INTO %s VALUES('Value 1')" % TABLE)
+    with pytest.raises(IntegrityError):
+        cursor.execute("INSERT INTO %s VALUES('Value 1')" % TABLE)

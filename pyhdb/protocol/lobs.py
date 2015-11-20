@@ -20,7 +20,7 @@ from pyhdb.protocol.message import RequestMessage
 from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.constants import message_types, type_codes
 from pyhdb.protocol.parts import ReadLobRequest
-from pyhdb.compat import PY2, PY3
+from pyhdb.compat import PY2, PY3, byte_type
 
 if PY2:
     # Depending on the Python version we use different underlying containers for CLOB strings
@@ -40,7 +40,7 @@ else:
     CLOB_STRING_IO = io.StringIO
 
 
-recv_log = logging.getLogger('receive')
+logger = logging.getLogger('pyhdb')
 
 SEEK_SET = os.SEEK_SET
 SEEK_CUR = os.SEEK_CUR
@@ -59,7 +59,7 @@ def from_payload(type_code, payload, connection):
         data = payload.read(lob_header.chunk_length)
         _LobClass = LOB_TYPE_CODE_MAP[type_code]
         lob = _LobClass.from_payload(data, lob_header, connection)
-        recv_log.debug('Lob Header %r' % lob)
+        logger.debug('Lob Header %r' % lob)
     return lob
 
 
@@ -152,7 +152,7 @@ class Lob(object):
 
     def _read_missing_lob_data_from_db(self, readoffset, readlength):
         """Read LOB request part from database"""
-        recv_log.debug('Reading missing lob data from db. Offset: %d, readlength: %d' % (readoffset, readlength))
+        logger.debug('Reading missing lob data from db. Offset: %d, readlength: %d' % (readoffset, readlength))
         lob_data = self._make_read_lob_request(readoffset, readlength)
 
         # make sure we really got as many items (not bytes!) as requested:
@@ -271,6 +271,9 @@ class NClob(_CharLob):
         if PY2 and isinstance(init_value, str):
             # io.String() only accepts unicode values, so do necessary conversion here:
             init_value = init_value.decode(self.encoding)
+        if PY3 and isinstance(init_value, byte_type):
+            init_value = init_value.decode(self.encoding)
+
         return io.StringIO(init_value)
 
 

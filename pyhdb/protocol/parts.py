@@ -28,13 +28,13 @@ from pyhdb.lib.stringlib import humanhexlify
 from pyhdb.protocol import types
 from pyhdb.protocol import constants
 from pyhdb.protocol.types import by_type_code
-from pyhdb.exceptions import InterfaceError, DatabaseError, DataError
-from pyhdb.compat import is_text, iter_range, with_metaclass, string_types
+from pyhdb.exceptions import InterfaceError, DatabaseError, DataError, IntegrityError
+from pyhdb.compat import is_text, iter_range, with_metaclass, string_types, byte_type
 from pyhdb.protocol.headers import ReadLobHeader, PartHeader, WriteLobHeader
 from pyhdb.protocol.constants import parameter_direction
 
-recv_log = logging.getLogger('receive')
-debug = recv_log.debug
+logger = logging.getLogger('pyhdb')
+debug = logger.debug
 
 PART_MAPPING = WeakValueDictionary()
 
@@ -251,7 +251,11 @@ class Error(Part):
         for _ in iter_range(argument_count):
             code, position, textlength, level, sqlstate = cls.part_struct.unpack(payload.read(cls.part_struct.size))
             errortext = payload.read(textlength).decode('utf-8')
-            errors.append(DatabaseError(errortext, code))
+            if code == 301:
+                # Unique constraint violated
+                errors.append(IntegrityError(errortext, code))
+            else:
+                errors.append(DatabaseError(errortext, code))
         return tuple(errors),
 
 
@@ -334,7 +338,7 @@ class ReadLobRequest(Part):
 
     def pack_data(self, remaining_size):
         """Pack data. readoffset has to be increased by one, seems like HANA starts from 1, not zero."""
-        payload = self.part_struct.pack(self.locator_id, self.readoffset + 1, self.readlength, '    ')
+        payload = self.part_struct.pack(self.locator_id, self.readoffset + 1, self.readlength, b'    ')
         return 4, payload
 
 
@@ -436,7 +440,9 @@ class LobBuffer(object):
     def __init__(self, orig_data, DataType, lob_header_pos):
         self.orig_data = orig_data
         # Lob data can be either an instance of a Lob-class, or a string/unicode object, Encode properly:
-        if isinstance(orig_data, string_types):
+        if isinstance(orig_data, byte_type):
+            enc_data = orig_data
+        elif isinstance(orig_data, string_types):
             enc_data = DataType.encode_value(orig_data)
         else:
             # assume a LOB instance:

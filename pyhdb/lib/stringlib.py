@@ -24,7 +24,7 @@ def allhexlify(data):
         '\x61\x62\x04\x63\x65'
     """
     hx = binascii.hexlify(data)
-    return ''.join([r'\x' + o for o in re.findall('..', hx)])
+    return b''.join([b'\\x' + o for o in re.findall(b'..', hx)])
 
 
 def humanhexlify(data, n=-1):
@@ -42,11 +42,11 @@ def humanhexlify(data, n=-1):
     becomes
         '61 62 04 ...'
     """
-    tail = ' ...' if 0 < n < len(data) else ''
+    tail = b' ...' if 0 < n < len(data) else b''
     if tail:
         data = data[:n]
     hx = binascii.hexlify(data)
-    return ' '.join(re.findall('..', hx)) + tail
+    return b' '.join(re.findall(b'..', hx)) + tail
 
 
 def dehexlify(hx):

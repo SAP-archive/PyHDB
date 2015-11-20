@@ -51,7 +51,7 @@ class TraceLogger(object):
                 # probably a namedtuple instance
                 tracer.writeln(u'%s = ' % (attr_name,))
                 tracer.incr('[')
-                for k, v in attr._asdict().iteritems():
+                for k, v in attr._asdict().items():
                     # _asdict() creates an OrderedDict, so elements are still in order
                     tracer.writeln(u'%s = %s' % (k, v))
                 tracer.decr(']')

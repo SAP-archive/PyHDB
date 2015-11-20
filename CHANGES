@@ -1,11 +1,21 @@
 Changelog
 =========
 
+0.3.1
+-----
+- Raise IntegrityError on unique constraint violation
+
 0.3.0
-- added LOB_WRITE requests allowing to insert or update LOBs of arbitrary size
-- reactivated unit tests which were deactivated by accident
-- added pyhdb.connect.from_ini(<inifile>) to connect to db with parameters from properly formatted ini file
-- more code cleanup and refactoring
+-----
+- Added LOB_WRITE requests allowing to insert or update LOBs of arbitrary size
+- Added support of SELECT FOR UPDATE statements
+- Added support of Geometry types
+- Added support for procedures with resultsets
+- Fixed and improved Real, BigInt, Time and Date types
+- Code cleanup and refactoring
+- Renamed logger form receive to pyhdb
+- Reactivated unit tests which were deactivated by accident
+- Added pyhdb.connect.from_ini(<inifile>) to connect to db with parameters from properly formatted ini file
 
 0.2.4
 -----
