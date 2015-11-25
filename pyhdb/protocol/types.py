@@ -180,8 +180,13 @@ class Decimal(Type):
         if value is None:
             return struct.pack('b', 0)
 
+        if isinstance(value, float):
+            value = decimal.Decimal(value)
+
         sign, digits, exponent = value.as_tuple()
-        mantissa = int(''.join(map(str, value.as_tuple().digits)))
+        if len(digits) > 34:
+            exponent += len(digits) - 34
+        mantissa = int(''.join(map(str, digits[:34])))
         exponent += 6176
 
         packed = bytearray(16)
@@ -192,8 +197,8 @@ class Decimal(Type):
         for i in iter_range(2, 16):
             packed[i] = (mantissa >> shift) & 0xFF
             shift -= 8
-        packed.reverse()
 
+        packed.reverse()
         return struct.pack('b', cls.type_code) + packed
 
 
