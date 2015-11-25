@@ -13,6 +13,7 @@
 # language governing permissions and limitations under the License.
 
 import pytest
+from decimal import Decimal
 
 from pyhdb.cursor import format_operation
 from pyhdb.exceptions import ProgrammingError, IntegrityError
@@ -27,6 +28,10 @@ def test_table_1(request, connection):
     """Fixture to create table for testing, and dropping it after test run"""
     tests.helper.create_table_fixture(request, connection, TABLE, TABLE_FIELDS)
 
+@pytest.fixture
+def test_table_2(request, connection):
+    """Fixture to create table for testing, and dropping it after test run"""
+    tests.helper.create_table_fixture(request, connection, 'PYHDB_TEST_2', 'TEST DECIMAL')
 
 @pytest.fixture
 def content_table_1(request, connection):
@@ -282,3 +287,12 @@ def test_IntegrityError_on_unique_constraint_violation(connection, test_table_1)
     cursor.execute("INSERT INTO %s VALUES('Value 1')" % TABLE)
     with pytest.raises(IntegrityError):
         cursor.execute("INSERT INTO %s VALUES('Value 1')" % TABLE)
+
+@pytest.mark.hanatest
+def test_prepared_decimal(connection, test_table_2):
+    cursor = connection.cursor()
+    cursor.execute("INSERT INTO PYHDB_TEST_2(TEST) VALUES(?)", [Decimal("3.14159265359")])
+
+    cursor.execute("SELECT * FROM PYHDB_TEST_2")
+    result = cursor.fetchall()
+    assert result == [(Decimal("3.14159265359"),)]

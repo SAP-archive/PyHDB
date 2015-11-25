@@ -175,6 +175,27 @@ class Decimal(Type):
     def to_sql(cls, value):
         return text_type(value)
 
+    @classmethod
+    def prepare(cls, value):
+        if value is None:
+            return struct.pack('b', 0)
+
+        sign, digits, exponent = value.as_tuple()
+        mantissa = int(''.join(map(str, value.as_tuple().digits)))
+        exponent += 6176
+
+        packed = bytearray(16)
+        packed[0] = (sign << 7) | (exponent >> 7)
+        packed[1] = ((exponent & 0x7F) << 1) | (mantissa >> 112)
+
+        shift = 104
+        for i in iter_range(2, 16):
+            packed[i] = (mantissa >> shift) & 0xFF
+            shift -= 8
+        packed.reverse()
+
+        return struct.pack('b', cls.type_code) + packed
+
 
 class Real(Type):
 
