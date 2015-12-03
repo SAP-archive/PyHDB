@@ -13,11 +13,8 @@
 # language governing permissions and limitations under the License.
 
 import pytest
-<<<<<<< b74dc3108fa0d225aa52721bdd7b77b1d60cbc57
-from decimal import Decimal
-=======
 import struct
->>>>>>> Add method to drop prepared statements.
+from decimal import Decimal
 
 from pyhdb.cursor import format_operation
 from pyhdb.exceptions import ProgrammingError, IntegrityError
