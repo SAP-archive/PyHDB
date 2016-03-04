@@ -231,7 +231,7 @@ class OutputParameters(Part):
         for param in parameters_metadata:
             # Unpack OUT or INOUT parameters' values
             if param.iotype != parameter_direction.IN:
-                values.append( by_type_code[param.datatype].from_resultset(self.payload) )
+                values.append( by_type_code[param.datatype].from_resultset(self.payload, connection) )
         yield tuple(values)
 
 
