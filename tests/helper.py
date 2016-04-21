@@ -95,3 +95,30 @@ def procedure_with_result_fixture(request, connection):
             pass
 
     request.addfinalizer(_close)
+
+@pytest.fixture
+def procedure_with_execution_warning(request, connection):
+    cursor = connection.cursor()
+    # create temporary procedure
+    try:
+        cursor.execute("""CREATE PROCEDURE PROCEDURE_WITH_EXECUTION_WARNING(
+                        )
+                        LANGUAGE SQLSCRIPT
+                        SQL SECURITY INVOKER
+                        AS
+                        BEGIN
+                            exec 'create table PROCEDURE_WITH_EXECUTION_WARNING_TABLE(id int)';
+        END""")
+    except:
+        # procedure probably already existed
+        pass
+
+    def _close():
+        try:
+            cursor.execute("""DROP PROCEDURE PROCEDURE_WITH_EXECUTION_WARNING""")
+            cursor.execute("""DROP TABLE PROCEDURE_WITH_EXECUTION_WARNING_TABLE""")
+        except:
+            # procedure didnt exist
+            pass
+
+    request.addfinalizer(_close)

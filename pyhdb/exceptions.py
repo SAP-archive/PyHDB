@@ -28,9 +28,10 @@ class InterfaceError(Error):
 
 class DatabaseError(Error):
 
-    def __init__(self, message, code=None):
+    def __init__(self, message, code=None, level=None):
         super(DatabaseError, self).__init__(message)
         self.code = code
+        self.level = level
 
 
 class InternalError(DatabaseError):

@@ -15,8 +15,11 @@
 import pytest
 from pyhdb.protocol.message import RequestMessage
 from pyhdb.protocol.segments import RequestSegment
-from pyhdb.exceptions import DatabaseError
+from pyhdb.exceptions import DatabaseError, Warning
 
+import tests.helper
+from tests.helper import procedure_with_execution_warning
+import warnings
 
 @pytest.mark.hanatest
 def test_invalid_request(connection):
@@ -35,3 +38,18 @@ def test_invalid_sql(connection):
 
     with pytest.raises(DatabaseError):
         cursor.execute("SELECT FROM DUMMY")
+
+@pytest.mark.hanatest
+def test_PROCEDURE_WITH_EXECUTION_WARNING(connection, procedure_with_execution_warning):
+    cursor = connection.cursor()
+
+    sql_to_prepare = 'call PROCEDURE_WITH_EXECUTION_WARNING ()'
+    params = []
+    psid = cursor.prepare(sql_to_prepare)
+    ps = cursor.get_prepared_statement(psid)
+    
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        cursor.execute_prepared(ps, [params])
+        assert issubclass(w[-1].category, Warning)
+        assert "Not recommended feature: DDL statement" in str(w[-1].message)

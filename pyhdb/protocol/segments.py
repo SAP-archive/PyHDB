@@ -15,15 +15,16 @@
 import io
 import struct
 import logging
+import warnings
 from io import BytesIO
 ###
-from pyhdb.protocol.constants import part_kinds
+from pyhdb.protocol.constants import part_kinds, error_level
 from pyhdb.compat import iter_range
 from pyhdb.protocol import constants
 from pyhdb.protocol.parts import Part
 from pyhdb.protocol.headers import RequestSegmentHeader, ReplySegmentHeader
 from pyhdb.protocol.constants import segment_kinds
-
+from pyhdb import DatabaseError, Warning
 
 logger = logging.getLogger('pyhdb')
 debug = logger.debug
@@ -145,10 +146,20 @@ class ReplySegment(BaseSegment):
             if segment_header.segment_kind == segment_kinds.REPLY:
                 yield segment
             elif segment_header.segment_kind == segment_kinds.ERROR:
-                error = segment
-                if error.parts[0].kind == part_kinds.ROWSAFFECTED:
-                    raise Exception("Rows affected %s" % (error.parts[0].values,))
-                elif error.parts[0].kind == part_kinds.ERROR:
-                    raise error.parts[0].errors[0]
+                for part in segment.parts:
+                    if part.kind == part_kinds.ROWSAFFECTED:
+                        warnings.warn("Rows affected %s" % (part.values,), Warning)
+                        continue
+
+                    if part.kind != part_kinds.ERROR:
+                        continue
+
+                    for error in part.errors:
+                        if isinstance(error, DatabaseError) and error.level == error_level.WARNING:
+                            warnings.warn(str(error), Warning)
+                        else:
+                            raise error
+
+                yield segment
             else:
                 raise Exception("Invalid reply segment")

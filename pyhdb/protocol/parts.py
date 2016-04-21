@@ -254,7 +254,7 @@ class Error(Part):
                 # Unique constraint violated
                 errors.append(IntegrityError(errortext, code))
             else:
-                errors.append(DatabaseError(errortext, code))
+                errors.append(DatabaseError(errortext, code, level))
         return tuple(errors),
 
 

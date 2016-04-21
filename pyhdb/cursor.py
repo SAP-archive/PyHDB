@@ -355,6 +355,8 @@ class Cursor(object):
                 pass
             elif part.kind == part_kinds.STATEMENTCONTEXT:
                 pass
+            elif part.kind == part_kinds.ERROR:
+                pass
             elif part.kind == part_kinds.OUTPUTPARAMETERS:
                 self._buffer = part.unpack_rows(parameters_metadata, self.connection)
                 self._received_last_resultset_part = True
