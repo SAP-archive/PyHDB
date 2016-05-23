@@ -15,7 +15,7 @@
 import pytest
 from decimal import Decimal
 
-from pyhdb.cursor import format_operation
+from pyhdb.cursor import format_named_query
 from pyhdb.exceptions import ProgrammingError, IntegrityError
 import tests.helper
 from pyhdb.resultrow import ResultRow
@@ -50,34 +50,20 @@ def content_table_1(request, connection):
 def test_format_operation_without_parameters(parameters):
     """Test that providing no parameter produces correct result."""
     operation = "SELECT * FROM TEST WHERE fuu = 'bar'"
-    assert format_operation(operation, parameters) == operation
-
-
-def test_format_operation_with_positional_parameters():
-    """Test that correct number of parameters produces correct result."""
-    assert format_operation(
-        "INSERT INTO TEST VALUES(%s, %s)", ('Hello World', 2)
-    ) == "INSERT INTO TEST VALUES('Hello World', 2)"
-
-
-def test_format_operation_with_too_few_positional_parameters_raises():
-    """Test that providing too few parameters raises exception"""
-    with pytest.raises(ProgrammingError):
-        format_operation("INSERT INTO TEST VALUES(%s, %s)", ('Hello World',))
-
-
-def test_format_operation_with_too_many_positional_parameters_raises():
-    """Test that providing too many parameters raises exception"""
-    with pytest.raises(ProgrammingError):
-        format_operation("INSERT INTO TEST VALUES(%s)", ('Hello World', 2))
+    assert format_named_query(operation, parameters) == (operation, ())
 
 
 def test_format_operation_with_named_parameters():
-    """format_operation() is used for Python style parameter expansion"""
-    assert format_operation(
-        "INSERT INTO TEST VALUES(%(name)s, %(val)s)",
-        {'name': 'Hello World', 'val': 2}
-    ) == "INSERT INTO TEST VALUES('Hello World', 2)"
+    """Test that correct number of parameters produces correct result."""
+    assert format_named_query(
+        "INSERT INTO TEST VALUES(:st, :in)", {'st':'Hello World', 'in': 2}
+    ) == ("INSERT INTO TEST VALUES(?, ?)", ('Hello World', 2))
+
+
+def test_format_operation_with_too_few_named_parameters_raises():
+    """Test that providing too few parameters raises exception"""
+    with pytest.raises(ProgrammingError):
+        format_named_query("INSERT INTO TEST VALUES(:st, :in)", {'st':'Hello World'})
 
 
 @pytest.mark.hanatest
@@ -154,26 +140,12 @@ def test_cursor_execute_with_params2(connection, test_table_1, content_table_1):
 
 
 @pytest.mark.hanatest
-def test_cursor_execute_with_params4(connection, test_table_1, content_table_1):
-    """Test format (positional) parameter expansion style"""
-    # Uses prepare_operation method
-    cursor = connection.cursor()
-
-    sql = 'select test from PYHDB_TEST_1 where test=%s'
-    # correct way:
-    assert cursor.execute(sql, ['row2']).fetchall() == [ResultRow(("test",), ('row2',))]
-    # invalid - extra unexpected parameter
-    with pytest.raises(ProgrammingError):
-        cursor.execute(sql, ['row2', 'extra']).fetchall()
-
-
-@pytest.mark.hanatest
 def test_cursor_execute_with_params5(connection, test_table_1, content_table_1):
-    """Test pyformat (named) parameter expansion style"""
+    """Test named parameter expansion style"""
     # Note: use fetchall() to check that only one row gets returned
     cursor = connection.cursor()
 
-    sql = 'select test from {} where test=%(test)s'.format(TABLE)
+    sql = 'select test from {} where test=:test'.format(TABLE)
     # correct way:
     assert cursor.execute(sql, {'test': 'row2'}).fetchall() == [ResultRow(("test",), ('row2',))]
     # also correct way, additional dict value should just be ignored
@@ -257,14 +229,14 @@ def test_cursor_description_after_execution(connection):
 
 
 @pytest.mark.hanatest
-def test_cursor_executemany_python_expansion(connection, test_table_1):
+def test_cursor_executemany_named_expansion(connection, test_table_1):
     cursor = connection.cursor()
 
     cursor.executemany(
-        "INSERT INTO {} VALUES(%s)".format(TABLE),
+        "INSERT INTO {} VALUES(:test)".format(TABLE),
         (
-            ("Statement 1",),
-            ("Statement 2",)
+            {"test":"Statement 1"},
+            {"test":"Statement 2"}
         )
     )
 
@@ -288,6 +260,49 @@ def test_cursor_executemany_hana_expansion(connection, test_table_1):
     cursor.execute("SELECT * FROM %s" % TABLE)
     result = cursor.fetchall()
     assert result == [ResultRow((), ('Statement 1',)), ResultRow((), ('Statement 2',))]
+
+@pytest.mark.hanatest
+def test_cursor_executemany_mixed_list_tuple(connection, test_table_1):
+    cursor = connection.cursor()
+
+    cursor.executemany(
+        "INSERT INTO %s VALUES(:1)" % TABLE,
+        (
+            ("Statement 1",),
+            ["Statement 2"]
+        )
+    )
+
+    cursor.execute("SELECT * FROM %s" % TABLE)
+    result = cursor.fetchall()
+    assert result == [ResultRow((), ('Statement 1',)), ResultRow((), ('Statement 2',))]
+
+
+@pytest.mark.hanatest
+def test_cursor_executemany_mixed_list_dict(connection, test_table_1):
+    cursor = connection.cursor()
+
+    with pytest.raises(ProgrammingError):
+        cursor.executemany(
+            "INSERT INTO %s VALUES(:1)" % TABLE,
+            (
+                ["Statement 1"],
+                {"test":"Statement 2"}
+            )
+        )
+
+@pytest.mark.hanatest
+def test_cursor_executemany_mixed_list_dict2(connection, test_table_1):
+    cursor = connection.cursor()
+
+    with pytest.raises(ProgrammingError):
+        cursor.executemany(
+            "INSERT INTO %s VALUES(:test)" % TABLE,
+            (
+                {"test":"Statement 2"},
+                ["Statement 1"]
+            )
+        )
 
 @pytest.mark.hanatest
 def test_IntegrityError_on_unique_constraint_violation(connection, test_table_1):

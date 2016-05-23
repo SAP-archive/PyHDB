@@ -82,7 +82,7 @@ def test_dummy_sql_to_time(connection):
     now = datetime.datetime.now().time()
 
     cursor = connection.cursor()
-    cursor.execute("SELECT to_time(%s) FROM DUMMY", (now,))
+    cursor.execute("SELECT to_time(?) FROM DUMMY", (now,))
 
     result = cursor.fetchone()
 
@@ -104,7 +104,7 @@ def test_dummy_sql_to_date(connection):
     today = datetime.date.today()
 
     cursor = connection.cursor()
-    cursor.execute("SELECT to_date(%s) FROM DUMMY", (today,))
+    cursor.execute("SELECT to_date(?) FROM DUMMY", (today,))
 
     result = cursor.fetchone()
     assert result[0] == today
@@ -125,7 +125,7 @@ def test_dummy_sql_to_timestamp(connection):
     now = now.replace(microsecond=123000)
 
     cursor = connection.cursor()
-    cursor.execute("SELECT to_timestamp(%s) FROM DUMMY", (now,))
+    cursor.execute("SELECT to_timestamp(?) FROM DUMMY", (now,))
 
     result = cursor.fetchone()
     assert result[0] == now
