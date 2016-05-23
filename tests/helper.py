@@ -21,7 +21,7 @@ def exists_table(connection, table):
     :returns: bool
     """
     cursor = connection.cursor()
-    cursor.execute('SELECT 1 FROM "SYS"."TABLES" WHERE "TABLE_NAME" = %s', (table,))
+    cursor.execute('SELECT 1 FROM "SYS"."TABLES" WHERE "TABLE_NAME" = ?', (table,))
     return cursor.fetchone() is not None
 
 
