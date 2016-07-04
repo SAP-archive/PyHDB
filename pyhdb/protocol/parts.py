@@ -496,6 +496,7 @@ class Parameters(Part):
 
                 if value is None:
                     pfield = types.NoneType.prepare(type_code)
+                    type_code = 0
                 elif type_code in types.String.type_code:
                     pfield = _DataType.prepare(value, type_code)
                 else:
