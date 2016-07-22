@@ -22,11 +22,6 @@ from pyhdb.protocol.constants import message_types, function_codes, part_kinds
 from pyhdb.exceptions import ProgrammingError, InterfaceError
 from pyhdb.compat import izip
 
-FORMAT_OPERATION_ERRORS = [
-    'not enough arguments for format string',
-    'not all arguments converted during string formatting'
-]
-
 
 
 _NAMED_PARAM = re.compile(r":([a-zA-Z0-9_]+)")
@@ -43,13 +38,17 @@ def format_named_query(operation, parameters=None):
         else:
             return (operation, ())
 
+    qmark_sql = operation
     param_values = []
     for marker in markers:
         if marker in parameters:
             param_values.append(parameters[marker])
+            # insert padding, in order to the position in the error message
+            # consist with the position in original query
+            qmark_sql = qmark_sql.replace(":" + marker, " " * len(marker) + "?")
         else:
             raise ProgrammingError(0, ":%s is not set" % (marker,))
-    qmark_sql = _NAMED_PARAM.sub('?', operation)
+
     if qmark_sql.count('?') != len(param_values):
         raise ProgrammingError(0, "%d variables should be bound, but only %d variables given : %s"
                                  % (qmark_sql.count('?'), len(param_values), operation))

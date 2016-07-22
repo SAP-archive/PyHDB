@@ -57,7 +57,7 @@ def test_format_operation_with_named_parameters():
     """Test that correct number of parameters produces correct result."""
     assert format_named_query(
         "INSERT INTO TEST VALUES(:st, :in)", {'st':'Hello World', 'in': 2}
-    ) == ("INSERT INTO TEST VALUES(?, ?)", ('Hello World', 2))
+    ) == ("INSERT INTO TEST VALUES(  ?,   ?)", ('Hello World', 2))
 
 
 def test_format_operation_with_too_few_named_parameters_raises():
@@ -68,7 +68,7 @@ def test_format_operation_with_too_few_named_parameters_raises():
 def test_format_operation_with_named_parameters_marker_used_twice():
     """Test that using single marker twice works"""
     assert format_named_query("INSERT INTO TEST VALUES(:st, :in, :st)", {'st':'Hello World', 'in':2}
-    ) == ("INSERT INTO TEST VALUES(?, ?, ?)", ('Hello World', 2, 'Hello World'))
+    ) == ("INSERT INTO TEST VALUES(  ?,   ?,   ?)", ('Hello World', 2, 'Hello World'))
 
 
 
