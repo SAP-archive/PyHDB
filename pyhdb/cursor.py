@@ -25,11 +25,46 @@ from pyhdb.compat import izip
 
 
 _NAMED_PARAM = re.compile(r":([a-zA-Z0-9_]+)")
+_SINGLE_QUOTE = re.compile(r"(?<!')(?:'')*(')(?!')")
+_DOUBLE_QUOTE = re.compile(r'(?<!")(?:"")*(")(?!")')
 
 
-def format_named_query(operation, parameters=None):
+def _get_keyword_markers(operation):
+    """
+    returns markers in sql-command
+    respects inner quotes and escaping
+    
+    :param sql-command
+    :returns dict of markers with their start positions: key is position, value is marker
+    """
+    # possible markers with their start positions
+    markers_candidates = {match.start() : match.groups()[0] for match in _NAMED_PARAM.finditer(operation)}
+    quoted_positions = []
+
+    # not escaped single quotes
+    single_quote_postions = [match.start() for match in _SINGLE_QUOTE.finditer(operation)]
+    # not escaped double quotes
+    double_quote_postions = [match.start() for match in _DOUBLE_QUOTE.finditer(operation)]
+
+    # stop when there are no pairs of quotes anymore
+    while len(single_quote_postions) > 1 or len(double_quote_postions) > 1:
+
+        # either no pairs of single quotes or next double quote pair is before single quote pair
+        if len(single_quote_postions) < 2 or len(double_quote_postions) > 1 and double_quote_postions[0] < single_quote_postions[0]:
+            quoted_positions += range(double_quote_postions.pop(0), double_quote_postions.pop(0))
+
+        # either no pairs of double quotes or next single quote pair is before double quote pair
+        elif len(double_quote_postions) < 2 or len(single_quote_postions) > 1 and single_quote_postions[0] < double_quote_postions[0] :
+            quoted_positions += range(single_quote_postions.pop(0), single_quote_postions.pop(0))
+
+    # only return markers which are not quoted
+    markers = {pos:markers_candidates[pos] for pos in markers_candidates.keys() if pos not in quoted_positions}
+    return markers
+
+
+def _format_named_query(operation, parameters=None):
     # replace named with question marks
-    markers = _NAMED_PARAM.findall(operation)
+    markers = _get_keyword_markers(operation)
 
     if parameters is None:
         if len(markers) > 0:
@@ -40,12 +75,17 @@ def format_named_query(operation, parameters=None):
 
     qmark_sql = operation
     param_values = []
-    for marker in markers:
+    for pos_marker_start in sorted(markers.keys()):
+        marker = markers[pos_marker_start]
+        pos_marker_end = pos_marker_start + len(marker) + 1
         if marker in parameters:
             param_values.append(parameters[marker])
-            # insert padding, in order to the position in the error message
-            # consist with the position in original query
-            qmark_sql = qmark_sql.replace(":" + marker, " " * len(marker) + "?")
+            # Insert padding, in order that the position in the error message
+            # consists with the position in original query.
+            #
+            # Only replace the marker at the position found
+            replaced_marker = " " * len(marker) + "?"
+            qmark_sql = qmark_sql[:pos_marker_start] + replaced_marker + qmark_sql[pos_marker_end:]
         else:
             raise ProgrammingError(0, ":%s is not set" % (marker,))
 
@@ -291,7 +331,7 @@ class Cursor(object):
                 for parameters in parameters:
                     # mixing of styles not allowed
                     if isinstance(parameters, dict):
-                        formated_statement, param_values = format_named_query(statement, parameters)
+                        formated_statement, param_values = _format_named_query(statement, parameters)
                         formated_parameters.append(param_values)
                     else:
                         raise ProgrammingError("Only dictionary is allowed in the sequence(tuple, list) of parameters if named sytle parameters are used.")
