@@ -13,20 +13,22 @@
 # limitations under the License.
 
 import io
+import logging
 import os
 import socket
 import struct
 import threading
-import logging
-###
+
 from pyhdb.auth import AuthManager
 from pyhdb.cursor import Cursor
 from pyhdb.exceptions import Error, OperationalError, ConnectionTimedOutError
-from pyhdb.protocol.segments import RequestSegment
+from pyhdb.protocol.constants import message_types, function_codes, DEFAULT_CONNECTION_OPTIONS
 from pyhdb.protocol.message import RequestMessage, ReplyMessage
 from pyhdb.protocol.parts import ClientId, ConnectOptions
-from pyhdb.protocol.constants import message_types, function_codes, DEFAULT_CONNECTION_OPTIONS
+from pyhdb.protocol.segments import RequestSegment
 
+
+###
 INITIALIZATION_BYTES = bytearray([
     255, 255, 255, 255, 4, 20, 0, 4, 1, 0, 0, 1, 1, 1
 ])
@@ -40,6 +42,7 @@ class Connection(object):
     """
     Database connection class
     """
+
     def __init__(self, host, port, user, password, autocommit=False, timeout=None):
         self.host = host
         self.port = port
@@ -63,14 +66,18 @@ class Connection(object):
         return '<Hana connection host=%s port=%s user=%s>' % (self.host, self.port, self.user)
 
     def _open_socket_and_init_protocoll(self):
-        self._socket = socket.create_connection((self.host, self.port), self._timeout)
+        try:
+            self._socket = socket.create_connection((self.host, self.port), self._timeout)
 
-        # Initialization Handshake
-        self._socket.sendall(INITIALIZATION_BYTES)
+            # Initialization Handshake
+            self._socket.sendall(INITIALIZATION_BYTES)
 
-        response = self._socket.recv(8)
+            response = self._socket.recv(8)
+        except socket.error as e:
+            raise OperationalError(e)
+
         if len(response) != 8:
-            raise Exception("Connection failed")
+            raise OperationalError("Connection failed")
 
         self.product_version = version_struct.unpack(response[0:3])
         self.protocol_version = version_struct.unpack_from(response[3:8])
