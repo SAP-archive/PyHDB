@@ -444,7 +444,7 @@ class Time(Type):
                 value = datetime.datetime.strptime(value, "%H:%M:%S.%f")
             else:
                 value = datetime.datetime.strptime(value, "%H:%M:%S")
-        millisecond = int(round(value.second * 1000 + value.microsecond / 1000.))
+        millisecond = value.second * 1000 + value.microsecond // 1000
         hour = value.hour | 0x80    # for some unknown reasons hour has to be bit-or'ed with 0x80
         pfield += cls._struct.pack(hour, value.minute, millisecond)
         return pfield
@@ -479,7 +479,7 @@ class Timestamp(Type):
                 value = datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S.%f")
             else:
                 value = datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
-        millisecond = int(round(value.second * 1000 + value.microsecond / 1000.))
+        millisecond = value.second * 1000 + value.microsecond // 1000
         year = value.year | 0x8000  # for some unknown reasons year has to be bit-or'ed with 0x8000
         month = value.month - 1     # for some unknown reasons HANA counts months starting from zero
         hour = value.hour | 0x80    # for some unknown reasons hour has to be bit-or'ed with 0x80
