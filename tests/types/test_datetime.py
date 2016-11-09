@@ -88,6 +88,8 @@ def test_to_daydate(input, expected):
 @pytest.mark.parametrize("input,expected", [
     (datetime(2014, 8, 25, 9, 47, 3), b'\x10\xDE\x87\x07\x19\x89\x2F\xb8\x0b'),
     (datetime(2014, 8, 25, 9, 47, 3, 2000), b'\x10\xDE\x87\x07\x19\x89\x2F\xba\x0b'),
+    (datetime(2014, 8, 25, 9, 47, 3, 999000), b'\x10\xDE\x87\x07\x19\x89\x2F\x9f\x0f'),
+    (datetime(2014, 8, 25, 9, 47, 3, 999999), b'\x10\xDE\x87\x07\x19\x89\x2F\x9f\x0f'),
     ("2014-08-25 09:47:03", b'\x10\xDE\x87\x07\x19\x89\x2F\xb8\x0b'),
     ("2014-08-25 09:47:03.002000", b'\x10\xDE\x87\x07\x19\x89\x2F\xba\x0b'),
 ])
@@ -106,6 +108,8 @@ def test_pack_date(input, expected):
 @pytest.mark.parametrize("input,expected", [
     (time(9, 47, 3), b'\x0f\x89/\xb8\x0b'),
     (time(9, 47, 3, 2000), b'\x0f\x89\x2F\xba\x0b'),
+    (time(9, 47, 3, 999000), b'\x0f\x89\x2F\x9f\x0f'),
+    (time(9, 47, 3, 999999), b'\x0f\x89\x2F\x9f\x0f'),
     ("9:47:03", b'\x0f\x89/\xb8\x0b'),
     ("9:47:03.002000", b'\x0f\x89\x2F\xba\x0b'),
 ])
