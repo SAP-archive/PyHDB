@@ -1,6 +1,10 @@
 Changelog
 =========
 
+0.3.3
+-----
+- Truncate (instead of round) microseconds to milliseconds in time or timestamp columns.
+
 0.3.2
 -----
 - Accept PARAMETERMETADATA part while handling select response
