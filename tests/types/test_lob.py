@@ -439,14 +439,15 @@ def test_parse_null_blob(type_code, null_lob_header):
 # #############################################################################################################
 
 TABLE = 'PYHDB_LOB_TEST'
-TABLE_FIELDS = 'name varchar(9), fblob blob, fclob clob, fnclob nclob'
+TABLE_FIELDS = 'name varchar(9), fblob blob, fclob clob, fnclob nclob, ftext text'
 import tests.helper
 
 
 @pytest.fixture
 def test_table(request, connection):
     """Fixture to create table for testing lobs, and dropping it after test run"""
-    tests.helper.create_table_fixture(request, connection, TABLE, TABLE_FIELDS)
+    # Using column table because TEXT is not supported for row tables
+    tests.helper.create_table_fixture(request, connection, TABLE, TABLE_FIELDS, True)
 
 
 @pytest.fixture
@@ -454,7 +455,7 @@ def content_table(request, connection):
     """Additional fixture to test_table, inserts some rows for testing"""
     cursor = connection.cursor()
     cursor.execute("insert into %s (name) values('nulls')" % TABLE)  # all lobs are NULL
-    cursor.execute("insert into %s values('lob0', 'blob0', 'clob0', 'nclob0')" % TABLE)
+    cursor.execute("insert into %s values('lob0', 'blob0', 'clob0', 'nclob0', 'text0')" % TABLE)
 
 
 # #############################################################################################################
@@ -463,26 +464,29 @@ def content_table(request, connection):
 @pytest.mark.hanatest
 def test_select_single_blob_row(connection, test_table, content_table):
     cursor = connection.cursor()
-    row = cursor.execute("select name, fblob, fclob, fnclob from %s where name='lob0'" % TABLE).fetchone()
-    name, blob, clob, nclob = row
+    row = cursor.execute("select name, fblob, fclob, fnclob, ftext from %s where name='lob0'" % TABLE).fetchone()
+    name, blob, clob, nclob, text = row
     assert name == 'lob0'
     assert isinstance(blob, lobs.Blob)
     assert isinstance(clob, lobs.Clob)
     assert isinstance(nclob, lobs.NClob)
+    assert isinstance(text, lobs.NClob)
     assert blob.read() == b'blob0'
     assert clob.read() == 'clob0'
     assert nclob.read() == 'nclob0'
+    assert text.read() == 'text0'
 
 
 @pytest.mark.hanatest
 def test_select_single_null_blob_row(connection, test_table, content_table):
     cursor = connection.cursor()
-    row = cursor.execute("select name, fblob, fclob, fnclob from %s where name='nulls'" % TABLE).fetchone()
-    name, blob, clob, nclob = row
+    row = cursor.execute("select name, fblob, fclob, fnclob, ftext from %s where name='nulls'" % TABLE).fetchone()
+    name, blob, clob, nclob, text = row
     assert name == 'nulls'
     assert blob is None
     assert clob is None
     assert nclob is None
+    assert text is None
 
 
 # insert statements  ### TODO: use parameterization for the next 6 tests!
@@ -549,6 +553,28 @@ def test_insert_single_object_nclob_row(connection, test_table):
     cursor.execute("insert into %s (fnclob, name) values (:1, :2)" % TABLE, [nclob_obj, 'nclob1'])
     nclob = cursor.execute("select fnclob from %s where name='nclob1' " % TABLE).fetchone()[0]
     assert nclob.read() == nclob_data
+
+
+@pytest.mark.hanatest
+def test_insert_single_object_text_row(connection, test_table):
+    """Insert a single row providing blob data as TEXT object (argument order: text, name)"""
+    cursor = connection.cursor()
+    text_data = NCLOB_DATA
+    text_obj = lobs.text(text_data)
+    cursor.execute("insert into %s (ftext, name) values (:1, :2)" % TABLE, [text_obj, 'text1'])
+    text = cursor.execute("select ftext from %s where name='text1' " % TABLE).fetchone()[0]
+    assert text.read() == text_data
+
+
+@pytest.mark.hanatest
+def test_insert_single_object_text_row(connection, test_table):
+    """Insert a single row providing text data as TEXT object (argument order: text, name)"""
+    cursor = connection.cursor()
+    text_data = NCLOB_DATA
+    text_obj = lobs.NClob(text_data)
+    cursor.execute("insert into %s (ftext, name) values (:1, :2)" % TABLE, [text_obj, 'text1'])
+    text = cursor.execute("select ftext from %s where name='text1' " % TABLE).fetchone()[0]
+    assert text.read() == text_data
 
 
 @pytest.mark.hanatest

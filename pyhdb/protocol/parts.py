@@ -501,7 +501,7 @@ class Parameters(Part):
                 else:
                     pfield = _DataType.prepare(value)
 
-                if type_code in (types.BlobType.type_code, types.ClobType.type_code, types.NClobType.type_code):
+                if type_code in pyhdb.protocol.lobs.LOB_TYPE_CODE_MAP:
                     # In case of value being a lob its actual data is not yet included in 'pfield' generated above.
                     # Instead the lob data needs to be appended at the end of the packed row data.
                     # Memorize the position of the lob header data (the 'pfield'):

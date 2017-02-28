@@ -492,10 +492,18 @@ class MixinLobType(object):
     type_code = None
 
     @classmethod
+    def get_internal_type(cls):
+        """Return the internal type_code that is used.
+        When there are multiple type codes, this is the first one in the list."""
+        if isinstance(cls.type_code, (tuple, list)):
+            return cls.type_code[0]
+        return cls.type_code
+
+    @classmethod
     def from_resultset(cls, payload, connection=None):
         # to avoid circular import the 'lobs' module has to be imported here:
         from . import lobs
-        return lobs.from_payload(cls.type_code, payload, connection)
+        return lobs.from_payload(cls.get_internal_type(), payload, connection)
 
     @classmethod
     def prepare(cls, value, length=0, position=0, is_last_data=True):
@@ -506,7 +514,7 @@ class MixinLobType(object):
         lob_option_dataincluded = WriteLobHeader.LOB_OPTION_DATAINCLUDED if length > 0 else 0
         lob_option_lastdata = WriteLobHeader.LOB_OPTION_LASTDATA if is_last_data else 0
         options = lob_option_dataincluded | lob_option_lastdata
-        pfield = hstruct.pack(cls.type_code, options, length, position)
+        pfield = hstruct.pack(cls.get_internal_type(), options, length, position)
         return pfield
 
 
@@ -522,7 +530,7 @@ class ClobType(Type, MixinLobType):
 
 class NClobType(Type, MixinLobType):
     """NCLOB type class"""
-    type_code = type_codes.NCLOB
+    type_code = (type_codes.NCLOB, type_codes.NLOCATOR)
 
     @classmethod
     def encode_value(cls, value):
