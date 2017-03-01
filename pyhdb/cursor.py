@@ -11,16 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import re
 import collections
 ###
 from pyhdb.protocol.message import RequestMessage
 from pyhdb.protocol.segments import RequestSegment
-from pyhdb.protocol.types import escape_values, by_type_code
+from pyhdb.protocol.types import by_type_code
 from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, Parameters, WriteLobRequest
 from pyhdb.protocol.constants import message_types, function_codes, part_kinds
-from pyhdb.exceptions import ProgrammingError, InterfaceError, DatabaseError
+from pyhdb.exceptions import ProgrammingError, InterfaceError
 from pyhdb.compat import izip
+from pyhdb.resultrow import ResultRow
 
 FORMAT_OPERATION_ERRORS = [
     'not enough arguments for format string',
@@ -28,20 +29,33 @@ FORMAT_OPERATION_ERRORS = [
 ]
 
 
-def format_operation(operation, parameters=None):
-    if parameters is not None:
-        e_values = escape_values(parameters)
-        try:
-            operation = operation % e_values
-        except TypeError as msg:
-            if str(msg) in FORMAT_OPERATION_ERRORS:
-                # Python DBAPI expects a ProgrammingError in this case
-                raise ProgrammingError(str(msg))
-            else:
-                # some other error message appeared, so just reraise exception:
-                raise
-    return operation
 
+_NAMED_PARAM = re.compile(r":([a-zA-Z0-9_]+)")
+
+
+def format_named_query(operation, parameters=None):
+    # replace named with question marks
+    markers = _NAMED_PARAM.findall(operation)
+
+    if parameters is None:
+        if len(markers) > 0:
+            raise ProgrammingError(0, "%d variables should be bound, but 0 variables given : %s"
+                                 % (len(markers), operation))
+        else:
+            return (operation, ())
+
+    param_values = []
+    for marker in markers:
+        if marker in parameters:
+            param_values.append(parameters[marker])
+        else:
+            raise ProgrammingError(0, ":%s is not set" % (marker,))
+    qmark_sql = _NAMED_PARAM.sub('?', operation)
+    if qmark_sql.count('?') != len(param_values):
+        raise ProgrammingError(0, "%d variables should be bound, but only %d variables given : %s"
+                                 % (qmark_sql.count('?'), len(param_values), operation))
+
+    return (qmark_sql, tuple(param_values))
 
 class PreparedStatement(object):
     """Reference object to a prepared statement including parameter (meta) data"""
@@ -237,7 +251,7 @@ class Cursor(object):
         :returns: this cursor
 
         In order to be compatible with Python's DBAPI five parameter styles
-        must be supported.
+        can be supported.
 
         paramstyle	Meaning
         ---------------------------------------------------------
@@ -247,9 +261,9 @@ class Cursor(object):
         4) format      ANSI C printf format codes, e.g. ...WHERE name=%s
         5) pyformat    Python extended format codes, e.g. ...WHERE name=%(name)s
 
-        Hana's 'prepare statement' feature supports 1) and 2), while 4 and 5
-        are handle by Python's own string expansion mechanism.
-        Note that case 3 is not yet supported by this method!
+        Hana's 'prepare statement' feature supports 1) and 2),
+        while 3) is is converted into a qmark statement.
+        Case 4) and 5) are not supported.
         """
         self._check_closed()
 
@@ -266,22 +280,42 @@ class Cursor(object):
         :param parameters: a nested list/tuple of parameters for multiple rows
         :returns: this cursor
         """
-        # First try safer hana-style parameter expansion:
-        try:
-            statement_id = self.prepare(statement)
-        except DatabaseError as msg:
-            # Hana expansion failed, check message to be sure of reason:
-            if 'incorrect syntax near "%"' not in str(msg):
-                # Probably some other error than related to string expansion -> raise an error
-                raise
-            # Statement contained percentage char, so perform Python style parameter expansion:
-            for row_params in parameters:
-                operation = format_operation(statement, row_params)
-                self._execute_direct(operation)
+        if not parameters:
+            return self._execute_direct(statement)
+
+        # format statement and parameters
+        elif isinstance(parameters, (list, tuple)):
+            formated_statement = statement
+            formated_parameters = []
+
+            # named style
+            if isinstance(parameters[0], dict):
+                for parameters in parameters:
+                    # mixing of styles not allowed
+                    if isinstance(parameters, dict):
+                        formated_statement, param_values = format_named_query(statement, parameters)
+                        formated_parameters.append(param_values)
+                    else:
+                        raise ProgrammingError("Only dictionary is allowed in the sequence(tuple, list) of parameters if named sytle parameters are used.")
+
+            # numeric/qmark style
+            elif isinstance(parameters[0], (list, tuple)):
+                for parameters in parameters:
+                    # mixing of styles not allowed
+                    if isinstance(parameters, (list, tuple)):
+                        formated_parameters.append(parameters)
+                    else:
+                        raise ProgrammingError("A tuple or a list is allowed in the sequence(tuple, list) of parameters if qmark or numeric style parameters are used.")
+            else:
+                raise ProgrammingError("A tuple, dict or a list is allowed in the sequence(tuple, list) of parameters.")
         else:
-            # Continue with Hana style statement execution:
-            prepared_statement = self.get_prepared_statement(statement_id)
-            self.execute_prepared(prepared_statement, parameters)
+            raise ProgrammingError("Second parameter should be a tuple or a list of parameters")
+
+        # Continue with prepared statement execution:
+        statement_id = self.prepare(formated_statement)
+        prepared_statement = self.get_prepared_statement(statement_id)
+
+        self.execute_prepared(prepared_statement, formated_parameters)
         # Return cursor object:
         return self
 
@@ -394,11 +428,13 @@ class Cursor(object):
         if size is None:
             size = self.arraysize
 
+        column_names = [column[0] for column in self.description] if self.description else []
+
         result = []
         cnt = 0
         while cnt != size:
             try:
-                result.append(next(self._buffer))
+                result.append(ResultRow(column_names, next(self._buffer)))
                 cnt += 1
             except StopIteration:
                 break
@@ -419,7 +455,9 @@ class Cursor(object):
         resultset_part = response.segments[0].parts[1]
         if resultset_part.attribute & 1:
             self._received_last_resultset_part = True
-        result.extend(resultset_part.unpack_rows(self._column_types, self.connection))
+        result_parts = resultset_part.unpack_rows(self._column_types, self.connection)
+        for result_part in result_parts:
+            result.append(ResultRow(column_names, result_part))
         return result
 
     def fetchone(self):

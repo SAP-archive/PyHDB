@@ -19,7 +19,7 @@ import pytest
 import tests.helper
 
 from tests.helper import procedure_add2_fixture, procedure_with_result_fixture
-
+from pyhdb.resultrow import ResultRow
 # #############################################################################################################
 #                         Basic Stored Procedure test
 # #############################################################################################################
@@ -36,7 +36,7 @@ def test_PROC_ADD2(connection, procedure_add2_fixture):
     ps = cursor.get_prepared_statement(psid)
     cursor.execute_prepared(ps, [params])
     result = cursor.fetchall()
-    assert result == [(7, 'A')]
+    assert result == [ResultRow((), (7, 'A'))]
 
 @pytest.mark.hanatest
 def test_proc_with_results(connection, procedure_with_result_fixture):
@@ -50,6 +50,6 @@ def test_proc_with_results(connection, procedure_with_result_fixture):
     cursor.execute_prepared(ps, [{'OUTVAR': 0}])
     result = cursor.fetchall()
 
-    assert result == [(2015,)]
+    assert result == [ResultRow((), (2015,))]
 
     cursor.close()

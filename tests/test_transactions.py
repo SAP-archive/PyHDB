@@ -16,7 +16,7 @@ import pytest
 
 import pyhdb
 import tests.helper
-
+from pyhdb.resultrow import ResultRow
 TABLE = 'PYHDB_TEST_1'
 TABLE_FIELDS = 'TEST VARCHAR(255)'
 
@@ -41,10 +41,10 @@ class TestIsolationBetweenConnections(object):
 
         cursor1 = connection_1.cursor()
         cursor1.execute(
-            'INSERT INTO PYHDB_TEST_1 VALUES(%s)', ('connection_1',)
+            'INSERT INTO PYHDB_TEST_1 VALUES(?)', ('connection_1',)
         )
         cursor1.execute("SELECT * FROM PYHDB_TEST_1")
-        assert cursor1.fetchall() == [('connection_1',)]
+        assert cursor1.fetchall() == [ResultRow((), ('connection_1',))]
 
         cursor2 = connection_2.cursor()
         cursor2.execute("SELECT * FROM PYHDB_TEST_1")
@@ -53,7 +53,7 @@ class TestIsolationBetweenConnections(object):
         connection_1.commit()
 
         cursor2.execute("SELECT * FROM PYHDB_TEST_1")
-        assert cursor2.fetchall() == [('connection_1',)]
+        assert cursor2.fetchall() == [ResultRow((), ('connection_1',))]
 
     def test_rollback(self, request, hana_system, test_table):
         connection_1 = pyhdb.connect(*hana_system)
@@ -66,10 +66,10 @@ class TestIsolationBetweenConnections(object):
 
         cursor1 = connection_1.cursor()
         cursor1.execute(
-            'INSERT INTO PYHDB_TEST_1 VALUES(%s)', ('connection_1',)
+            'INSERT INTO PYHDB_TEST_1 VALUES(?)', ('connection_1',)
         )
         cursor1.execute("SELECT * FROM PYHDB_TEST_1")
-        assert cursor1.fetchall() == [('connection_1',)]
+        assert cursor1.fetchall() == [ResultRow((), ('connection_1',))]
 
         cursor2 = connection_2.cursor()
         cursor2.execute("SELECT * FROM PYHDB_TEST_1")
@@ -91,20 +91,20 @@ class TestIsolationBetweenConnections(object):
 
         cursor1 = connection_1.cursor()
         cursor1.execute(
-            'INSERT INTO PYHDB_TEST_1 VALUES(%s)', ('connection_1',)
+            'INSERT INTO PYHDB_TEST_1 VALUES(?)', ('connection_1',)
         )
         cursor1.execute("SELECT * FROM PYHDB_TEST_1")
-        assert cursor1.fetchall() == [('connection_1',)]
+        assert cursor1.fetchall() == [ResultRow((), ('connection_1',))]
 
         cursor2 = connection_2.cursor()
         cursor2.execute("SELECT * FROM PYHDB_TEST_1")
-        assert cursor2.fetchall() == [('connection_1',)]
+        assert cursor2.fetchall() == [ResultRow((), ('connection_1',))]
 
     def test_select_for_update(self, connection, test_table):
         cursor = connection.cursor()
-        cursor.execute("INSERT INTO PYHDB_TEST_1 VALUES(%s)", ('test',))
+        cursor.execute("INSERT INTO PYHDB_TEST_1 VALUES(?)", ('test',))
         connection.commit()
 
         cursor.execute("SELECT * FROM PYHDB_TEST_1 FOR UPDATE")
-        assert cursor.fetchall() == [('test',)]
+        assert cursor.fetchall() == [ResultRow((), ('test',))]
 

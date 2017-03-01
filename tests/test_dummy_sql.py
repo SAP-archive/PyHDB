@@ -17,7 +17,7 @@ import datetime
 from decimal import Decimal, getcontext
 
 import pytest
-
+from pyhdb.resultrow import ResultRow
 
 @pytest.mark.hanatest
 def test_dummy_sql_int(connection):
@@ -25,7 +25,7 @@ def test_dummy_sql_int(connection):
     cursor.execute("SELECT 1 FROM DUMMY")
 
     result = cursor.fetchone()
-    assert result == (1,)
+    assert result == ResultRow((), (1,))
 
 
 @pytest.mark.hanatest
@@ -36,7 +36,7 @@ def test_dummy_sql_decimal(connection):
     cursor.execute("SELECT -312313212312321.1245678910111213142 FROM DUMMY")
 
     result = cursor.fetchone()
-    assert result == (Decimal('-312313212312321.1245678910111213142'),)
+    assert result == ResultRow((), (Decimal('-312313212312321.1245678910111213142'),))
 
 
 @pytest.mark.hanatest
@@ -45,18 +45,18 @@ def test_dummy_sql_string(connection):
     cursor.execute("SELECT 'Hello World' FROM DUMMY")
 
     result = cursor.fetchone()
-    assert result == ("Hello World",)
+    assert result == ResultRow((), ("Hello World",))
 
 
 @pytest.mark.hanatest
 def test_dummy_sql_long_string(connection):
-    test_string = '%030x' % random.randrange(16**300)
+    test_string = '%030x' % random.randrange(16 ** 300)
 
     cursor = connection.cursor()
     cursor.execute("SELECT '%s' FROM DUMMY" % test_string)
 
     result = cursor.fetchone()
-    assert result == (test_string,)
+    assert result == ResultRow((), (test_string,))
 
 
 @pytest.mark.hanatest
@@ -65,7 +65,7 @@ def test_dummy_sql_binary(connection):
     cursor.execute("SELECT X'FF00FFA3B5' FROM DUMMY")
 
     result = cursor.fetchone()
-    assert result == (b"\xFF\x00\xFF\xA3\xB5",)
+    assert result == ResultRow((), (b"\xFF\x00\xFF\xA3\xB5",))
 
 
 @pytest.mark.hanatest
@@ -82,7 +82,7 @@ def test_dummy_sql_to_time(connection):
     now = datetime.datetime.now().time()
 
     cursor = connection.cursor()
-    cursor.execute("SELECT to_time(%s) FROM DUMMY", (now,))
+    cursor.execute("SELECT to_time(?) FROM DUMMY", (now,))
 
     result = cursor.fetchone()
 
@@ -104,7 +104,7 @@ def test_dummy_sql_to_date(connection):
     today = datetime.date.today()
 
     cursor = connection.cursor()
-    cursor.execute("SELECT to_date(%s) FROM DUMMY", (today,))
+    cursor.execute("SELECT to_date(?) FROM DUMMY", (today,))
 
     result = cursor.fetchone()
     assert result[0] == today
@@ -125,7 +125,7 @@ def test_dummy_sql_to_timestamp(connection):
     now = now.replace(microsecond=123000)
 
     cursor = connection.cursor()
-    cursor.execute("SELECT to_timestamp(%s) FROM DUMMY", (now,))
+    cursor.execute("SELECT to_timestamp(?) FROM DUMMY", (now,))
 
     result = cursor.fetchone()
     assert result[0] == now
