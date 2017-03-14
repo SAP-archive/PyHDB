@@ -506,11 +506,12 @@ class Parameters(Part):
                     # Instead the lob data needs to be appended at the end of the packed row data.
                     # Memorize the position of the lob header data (the 'pfield'):
                     lob_header_pos = payload.tell()
-                    lob_buffer = LobBuffer(value, _DataType, lob_header_pos)
-                    # Add length of lob data to the sum so we can see whether all data fits into a segment below:
-                    row_lob_size_sum += lob_buffer.encoded_lob_size
-                    # Append lob data so it can be appended once all data for the row is packed:
-                    row_lobs.append(lob_buffer)
+                    if value:
+                        lob_buffer = LobBuffer(value, _DataType, lob_header_pos)
+                        # Add length of lob data to the sum so we can see whether all data fits into a segment below:
+                        row_lob_size_sum += lob_buffer.encoded_lob_size
+                        # Append lob data so it can be appended once all data for the row is packed:
+                        row_lobs.append(lob_buffer)
 
                 payload.write(pfield)
 
