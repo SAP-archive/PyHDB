@@ -99,7 +99,7 @@ class PreparedStatement(object):
         if len(parameters) != len(self._params_metadata):
             raise ProgrammingError("Prepared statement parameters expected %d supplied %d." %
                                    (len(self._params_metadata), len(parameters)))
-        row_params = [self.ParamTuple(p.id, p.datatype, p.length, parameters[p.id]) for p in self._params_metadata]
+        row_params = [self.ParamTuple(p.id, p.datatype, p.length, parameters[i]) for i, p in enumerate(self._params_metadata)]
         self._iter_row_count += 1
         return row_params
 
