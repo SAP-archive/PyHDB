@@ -1,6 +1,11 @@
 Changelog
 =========
 
+0.3.4
+-----
+- Fixed parameters tuple access with unicode index (#98)
+- Ignore part 47 PARAMETERMETADATA in _handle_upsert (#89)
+
 0.3.3
 -----
 - Truncate (instead of round) microseconds to milliseconds in time or timestamp columns.
