@@ -293,7 +293,7 @@ class Cursor(object):
         for part in parts:
             if part.kind == part_kinds.ROWSAFFECTED:
                 self.rowcount = part.values[0]
-            elif part.kind in (part_kinds.TRANSACTIONFLAGS, part_kinds.STATEMENTCONTEXT):
+            elif part.kind in (part_kinds.TRANSACTIONFLAGS, part_kinds.STATEMENTCONTEXT, part_kinds.PARAMETERMETADATA):
                 pass
             elif part.kind == part_kinds.WRITELOBREPLY:
                 # This part occurrs after lobs have been submitted not at all or only partially during an insert.
