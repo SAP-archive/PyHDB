@@ -183,6 +183,9 @@ class Decimal(Type):
         if isinstance(value, float):
             value = decimal.Decimal(value)
 
+        elif isinstance(value, int):
+            value = decimal.Decimal(value)
+
         sign, digits, exponent = value.as_tuple()
         if len(digits) > 34:
             exponent += len(digits) - 34
