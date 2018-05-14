@@ -257,7 +257,7 @@ class Clob(_CharLob):
 class NClob(_CharLob):
     """Instance of this class will be returned for a NCLOB object in a db result"""
     type_code = type_codes.NCLOB
-    encoding = 'utf8'
+    encoding = 'latin-1'
 
     def __unicode__(self):
         """Convert lob into its unicode format"""
