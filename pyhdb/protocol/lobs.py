@@ -14,6 +14,7 @@
 
 import io
 import logging
+import chardet
 from pyhdb.protocol.headers import ReadLobHeader
 from pyhdb.protocol.message import RequestMessage
 from pyhdb.protocol.segments import RequestSegment
@@ -257,7 +258,7 @@ class Clob(_CharLob):
 class NClob(_CharLob):
     """Instance of this class will be returned for a NCLOB object in a db result"""
     type_code = type_codes.NCLOB
-    encoding = 'latin-1'
+    encoding = None
 
     def __unicode__(self):
         """Convert lob into its unicode format"""
@@ -266,7 +267,7 @@ class NClob(_CharLob):
     def _init_io_container(self, init_value):
         if isinstance(init_value, io.StringIO):
             return init_value
-
+        encoding = chardet.detect(init_value)['encoding']
         if PY2 and isinstance(init_value, str):
             # io.String() only accepts unicode values, so do necessary conversion here:
             init_value = init_value.decode(self.encoding)
