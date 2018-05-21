@@ -14,7 +14,6 @@
 
 import io
 import logging
-import chardet
 from pyhdb.protocol.headers import ReadLobHeader
 from pyhdb.protocol.message import RequestMessage
 from pyhdb.protocol.segments import RequestSegment
@@ -77,7 +76,7 @@ class Lob(object):
 
     @classmethod
     def _decode_lob_data(cls, payload_data):
-        return payload_data.decode(cls.encoding) if cls.encoding else payload_data
+        return payload_data.decode(cls.encoding, errors='ignore') if cls.encoding else payload_data
 
     def __init__(self, init_value='', lob_header=None, connection=None):
         self.data = self._init_io_container(init_value)
@@ -234,7 +233,7 @@ class Clob(_CharLob):
 
     def __unicode__(self):
         """Convert lob into its unicode format"""
-        return self.data.getvalue().decode(self.encoding)
+        return self.data.getvalue().decode(self.encoding, errors='ignore')
 
     def _init_io_container(self, init_value):
         """Initialize container to hold lob data.
@@ -258,7 +257,7 @@ class Clob(_CharLob):
 class NClob(_CharLob):
     """Instance of this class will be returned for a NCLOB object in a db result"""
     type_code = type_codes.NCLOB
-    encoding = None
+    encoding = 'utf8'
 
     def __unicode__(self):
         """Convert lob into its unicode format"""
@@ -267,12 +266,12 @@ class NClob(_CharLob):
     def _init_io_container(self, init_value):
         if isinstance(init_value, io.StringIO):
             return init_value
-        encoding = chardet.detect(init_value)['encoding']
+
         if PY2 and isinstance(init_value, str):
             # io.String() only accepts unicode values, so do necessary conversion here:
-            init_value = init_value.decode(self.encoding)
+            init_value = init_value.decode(self.encoding, errors='ignore')
         if PY3 and isinstance(init_value, byte_type):
-            init_value = init_value.decode(self.encoding)
+            init_value = init_value.decode(self.encoding, errors='ignore')
 
         return io.StringIO(init_value)
 
