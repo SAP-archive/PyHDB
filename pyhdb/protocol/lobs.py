@@ -76,7 +76,7 @@ class Lob(object):
 
     @classmethod
     def _decode_lob_data(cls, payload_data):
-        return payload_data.decode(cls.encoding, errors='ignore') if cls.encoding else payload_data
+        return payload_data.decode(cls.encoding) if cls.encoding else payload_data
 
     def __init__(self, init_value='', lob_header=None, connection=None):
         self.data = self._init_io_container(init_value)
@@ -269,9 +269,19 @@ class NClob(_CharLob):
 
         if PY2 and isinstance(init_value, str):
             # io.String() only accepts unicode values, so do necessary conversion here:
-            init_value = init_value.decode(self.encoding, errors='ignore')
+            try:
+                init_value = init_value.decode(self.encoding)
+            except UnicodeDecodeError as e:
+                logger.warning('Decoding failed: %s' % str(e))
+                logger.warning('Will proceed with decoding, but errored characters will be ignored')
+                init_value = init_value.decode(self.encoding, errors='ignore')
         if PY3 and isinstance(init_value, byte_type):
-            init_value = init_value.decode(self.encoding, errors='ignore')
+            try:
+                init_value = init_value.decode(self.encoding)
+            except UnicodeDecodeError as e:
+                logger.warning('Decoding failed: %s' % str(e))
+                logger.warning('Will proceed with decoding, but errored characters will be ignored')
+                init_value = init_value.decode(self.encoding, errors='ignore')
 
         return io.StringIO(init_value)
 
