@@ -47,7 +47,7 @@ class AuthManager(object):
                 Authentication(self.user, {self.method: self.client_key})
             )
         )
-        response = self.connection.send_request(request)
+        response = self.connection.send_request(request, no_reconnect=True)
 
         auth_part = response.segments[0].parts[0]
         if self.method not in auth_part.methods:

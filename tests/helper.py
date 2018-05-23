@@ -13,6 +13,7 @@
 # language governing permissions and limitations under the License.
 
 import pytest
+import mock
 
 
 def exists_table(connection, table):
@@ -95,3 +96,24 @@ def procedure_with_result_fixture(request, connection):
             pass
 
     request.addfinalizer(_close)
+
+@pytest.fixture
+def connection_mock_timeout(connection):
+    # save connection state
+    old_send = connection._Connection__send_message_recv_reply
+    connection.__exception_raised = False
+
+    # patch connection to timeout once
+    def mock_return(message):
+        # raise timeout exception once
+        if not connection.__exception_raised:
+            connection.__exception_raised = True
+            raise ConnectionTimedOutError('mock timeout')
+
+        # otherwise use original function
+        return old_send(message)
+
+    send_mock = mock.patch.object(connection, '_Connection__send_message_recv_reply')
+    send_mock.side_effect = mock_return
+
+    return send_mock

@@ -25,7 +25,8 @@ from pyhdb.exceptions import Error, OperationalError, ConnectionTimedOutError
 from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.message import RequestMessage, ReplyMessage
 from pyhdb.protocol.parts import ClientId, ConnectOptions
-from pyhdb.protocol.constants import message_types, function_codes, DEFAULT_CONNECTION_OPTIONS
+from pyhdb.protocol.constants import message_types, function_codes, \
+    DEFAULT_CONNECTION_OPTIONS, part_kinds
 
 INITIALIZATION_BYTES = bytearray([
     255, 255, 255, 255, 4, 20, 0, 4, 1, 0, 0, 1, 1, 1
@@ -40,7 +41,7 @@ class Connection(object):
     """
     Database connection class
     """
-    def __init__(self, host, port, user, password, autocommit=False, timeout=None):
+    def __init__(self, host, port, user, password, autocommit=False, reconnect=False, timeout=None):
         self.host = host
         self.port = port
         self.user = user
@@ -49,18 +50,25 @@ class Connection(object):
         self.product_version = None
         self.protocol_version = None
 
-        self.session_id = -1
-        self.packet_count = -1
-
         self._socket = None
+        self._reconnect = reconnect
         self._timeout = timeout
         self._auth_manager = AuthManager(self, user, password)
         # It feels like the RLock has a poorer performance
         self._socket_lock = threading.RLock()
         self._packet_count_lock = threading.Lock()
 
+        self._reset_session()
+
     def __repr__(self):
         return '<Hana connection host=%s port=%s user=%s>' % (self.host, self.port, self.user)
+
+    def _reset_session(self):
+        with self._packet_count_lock:
+            self.packet_count = -1
+
+        self.session_id = -1
+        self.connect_options = DEFAULT_CONNECTION_OPTIONS
 
     def _open_socket_and_init_protocoll(self):
         self._socket = socket.create_connection((self.host, self.port), self._timeout)
@@ -75,13 +83,29 @@ class Connection(object):
         self.product_version = version_struct.unpack(response[0:3])
         self.protocol_version = version_struct.unpack_from(response[3:8])
 
-    def send_request(self, message):
+    def send_request(self, message, no_reconnect=False):
         """Send message request to HANA db and return reply message
         :param message: Instance of Message object containing segments and parts of a HANA db request
         :returns: Instance of reply Message object
         """
         payload = message.pack()  # obtain BytesIO instance
-        return self.__send_message_recv_reply(payload.getvalue())
+        reply = None
+
+        try:        
+            reply = self.__send_message_recv_reply(payload.getvalue())
+        except (ConnectionTimedOutError, OperationalError) as error:
+            if not self._reconnect or no_reconnect:
+                raise error
+
+            # try to reconnect and then try again
+            self._try_reconnect()
+
+            # update session ID and re-pack
+            message.session_id = self.session_id
+            payload = message.pack()
+            reply = self.__send_message_recv_reply(payload.getvalue())
+
+        return reply
 
     def __send_message_recv_reply(self, packed_message):
         """
@@ -123,6 +147,23 @@ class Connection(object):
         payload.seek(0)  # set pointer position to beginning of buffer
         return ReplyMessage.unpack_reply(header, payload)
 
+    def _try_reconnect(self):
+        with self._socket_lock:
+            # save old socket
+            old_socket = self._socket
+            self._socket = None
+
+            # connect again
+            self._reset_session()
+            self.connect()
+
+            # don't bother sending a proper disconnect message,
+            # because the socket is in an exception state already
+            if old_socket:
+                old_socket.shutdown(socket.SHUT_RDWR)
+                old_socket.close()
+                old_socket = None
+
     def get_next_packet_count(self):
         with self._packet_count_lock:
             self.packet_count += 1
@@ -153,7 +194,13 @@ class Connection(object):
                     )
                 )
             )
-            self.send_request(request)
+            reply = self.send_request(request, no_reconnect=True)
+
+            for segment in reply.segments:
+                for part in segment.parts:
+                    if part.kind == part_kinds.CONNECTOPTIONS:
+                        self.connect_options = part.options
+
 
     def close(self):
         with self._socket_lock:
@@ -165,7 +212,7 @@ class Connection(object):
                     self,
                     RequestSegment(message_types.DISCONNECT)
                 )
-                reply = self.send_request(request)
+                reply = self.send_request(request, no_reconnect=True)
                 if reply.segments[0].function_code != \
                    function_codes.DISCONNECT:
                     raise Error("Connection wasn't closed correctly")

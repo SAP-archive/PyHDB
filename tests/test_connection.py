@@ -16,9 +16,44 @@
 
 import os
 import pytest
+import mock
+
+import tests.helper
+from tests.helper import connection_mock_timeout
 
 from pyhdb.connection import Connection
+from pyhdb.exceptions import ConnectionTimedOutError
 import pyhdb
+
+
+@pytest.mark.hanatest
+def test_reconnect_cursor(hana_system):
+    connection = Connection(*hana_system, reconnect=True)
+    connection.connect()
+
+    # break connection
+    connection_mock_timeout(connection)
+
+    # try dummy query
+    cursor = connection.cursor()
+    cursor.execute('''SELECT 1 FROM DUMMY''')
+
+    assert connection.isconnected()
+
+
+@pytest.mark.hanatest
+def test_reconnect_execute(hana_system):
+    connection = Connection(*hana_system, reconnect=True)
+    connection.connect()
+    cursor = connection.cursor()
+
+    # break connection
+    connection_mock_timeout(connection)
+
+    # try dummy query
+    cursor.execute('''SELECT 1 FROM DUMMY''')
+
+    assert connection.isconnected()
 
 
 @pytest.mark.hanatest
