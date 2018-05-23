@@ -13,6 +13,7 @@
 # language governing permissions and limitations under the License.
 
 import io
+import os
 import logging
 from pyhdb.protocol.headers import ReadLobHeader
 from pyhdb.protocol.message import RequestMessage
@@ -41,9 +42,9 @@ else:
 
 logger = logging.getLogger('pyhdb')
 
-SEEK_SET = io.SEEK_SET
-SEEK_CUR = io.SEEK_CUR
-SEEK_END = io.SEEK_END
+SEEK_SET = os.SEEK_SET
+SEEK_CUR = os.SEEK_CUR
+SEEK_END = os.SEEK_END
 
 
 def from_payload(type_code, payload, connection):

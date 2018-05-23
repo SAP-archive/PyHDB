@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import io
+import os
 import struct
 ###
 from pyhdb.protocol import constants
@@ -49,7 +50,7 @@ class RequestMessage(BaseMessage):
         payload = io.BytesIO()
         # Advance num bytes equal to header size - the header is written later
         # after the payload of all segments and parts has been written:
-        payload.seek(self.header_size, io.SEEK_CUR)
+        payload.seek(self.header_size, os.SEEK_CUR)
 
         # Write out payload of segments and parts:
         self.build_payload(payload)
@@ -62,7 +63,7 @@ class RequestMessage(BaseMessage):
         # Go back to begining of payload for writing message header:
         payload.seek(0)
         payload.write(packed_header)
-        payload.seek(0, io.SEEK_END)
+        payload.seek(0, os.SEEK_END)
 
         trace(self)
 

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import io
+import os
 import struct
 import logging
 from io import BytesIO
@@ -88,7 +89,7 @@ class RequestSegment(BaseSegment):
 
         # Advance num bytes equal to header size. The header is written later
         # after the payload of all segments and parts has been written:
-        payload.seek(self.header_size, io.SEEK_CUR)
+        payload.seek(self.header_size, os.SEEK_CUR)
 
         # Generate payload of parts:
         self.build_payload(payload)
@@ -102,7 +103,7 @@ class RequestSegment(BaseSegment):
         payload.seek(segment_payload_start_pos)
         payload.write(packed_header)
         # Put file pointer at the end of the bffer so that next segment can be appended:
-        payload.seek(0, io.SEEK_END)
+        payload.seek(0, os.SEEK_END)
 
 
 class ReplySegment(BaseSegment):
