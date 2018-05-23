@@ -21,6 +21,7 @@ from pyhdb.protocol.parts import Command, FetchSize, ResultSetId, StatementId, P
 from pyhdb.protocol.constants import message_types, function_codes, part_kinds
 from pyhdb.exceptions import ProgrammingError, InterfaceError, DatabaseError
 from pyhdb.compat import izip
+from pyhdb.resultrow import ResultRow
 
 FORMAT_OPERATION_ERRORS = [
     'not enough arguments for format string',
@@ -394,11 +395,13 @@ class Cursor(object):
         if size is None:
             size = self.arraysize
 
+        column_names = [column[0] for column in self.description] if self.description else []
+
         result = []
         cnt = 0
         while cnt != size:
             try:
-                result.append(next(self._buffer))
+                result.append(ResultRow(column_names, next(self._buffer)))
                 cnt += 1
             except StopIteration:
                 break
@@ -419,7 +422,9 @@ class Cursor(object):
         resultset_part = response.segments[0].parts[1]
         if resultset_part.attribute & 1:
             self._received_last_resultset_part = True
-        result.extend(resultset_part.unpack_rows(self._column_types, self.connection))
+        result_parts = resultset_part.unpack_rows(self._column_types, self.connection)
+        for result_part in result_parts:
+            result.append(ResultRow(column_names, result_part))
         return result
 
     def fetchone(self):

@@ -18,7 +18,7 @@ from decimal import Decimal
 from pyhdb.cursor import format_operation
 from pyhdb.exceptions import ProgrammingError, IntegrityError
 import tests.helper
-
+from pyhdb.resultrow import ResultRow
 TABLE = 'PYHDB_TEST_1'
 TABLE_FIELDS = 'TEST VARCHAR(255)'
 
@@ -93,8 +93,7 @@ def test_cursor_fetchall_single_row(connection):
     cursor.execute("SELECT 1 FROM DUMMY")
 
     result = cursor.fetchall()
-    assert result == [(1,)]
-
+    assert result == [ResultRow((), (1,))]
 
 @pytest.mark.hanatest
 def test_cursor_fetchall_multiple_rows(connection):
@@ -103,6 +102,17 @@ def test_cursor_fetchall_multiple_rows(connection):
 
     result = cursor.fetchall()
     assert len(result) == 10
+
+@pytest.mark.hanatest
+def test_acess_with_column_name(connection):
+    cursor = connection.cursor()
+    cursor.execute('SELECT "VIEW_NAME" FROM "PUBLIC"."VIEWS" LIMIT 1')
+
+    result = cursor.fetchall()
+    assert len(result) == 1
+
+    assert result[0]["VIEW_NAME"] == 'HAS_NEEDED_SYSTEM_PRIV'
+    assert result[0]["view_name"] == 'HAS_NEEDED_SYSTEM_PRIV'
 
 
 # Test cases for different parameter style expansion
@@ -123,7 +133,7 @@ def test_cursor_execute_with_params1(connection, test_table_1, content_table_1):
 
     sql = 'select test from PYHDB_TEST_1 where test=?'
     # correct way:
-    assert cursor.execute(sql, ['row2']).fetchall() == [('row2',)]
+    assert cursor.execute(sql, ['row2']).fetchall() == [ResultRow(("test",), ('row2',))]
     # invalid - extra unexpected parameter
     with pytest.raises(ProgrammingError):
         cursor.execute(sql, ['row2', 'extra']).fetchall()
@@ -137,7 +147,7 @@ def test_cursor_execute_with_params2(connection, test_table_1, content_table_1):
 
     sql = 'select test from PYHDB_TEST_1 where test=?'
     # correct way:
-    assert cursor.execute(sql, ['row2']).fetchall() == [('row2',)]
+    assert cursor.execute(sql, ['row2']).fetchall() == [ResultRow(("test",), ('row2',))]
     # invalid - extra unexpected parameter
     with pytest.raises(ProgrammingError):
         cursor.execute(sql, ['row2', 'extra']).fetchall()
@@ -151,7 +161,7 @@ def test_cursor_execute_with_params4(connection, test_table_1, content_table_1):
 
     sql = 'select test from PYHDB_TEST_1 where test=%s'
     # correct way:
-    assert cursor.execute(sql, ['row2']).fetchall() == [('row2',)]
+    assert cursor.execute(sql, ['row2']).fetchall() == [ResultRow(("test",), ('row2',))]
     # invalid - extra unexpected parameter
     with pytest.raises(ProgrammingError):
         cursor.execute(sql, ['row2', 'extra']).fetchall()
@@ -165,23 +175,23 @@ def test_cursor_execute_with_params5(connection, test_table_1, content_table_1):
 
     sql = 'select test from {} where test=%(test)s'.format(TABLE)
     # correct way:
-    assert cursor.execute(sql, {'test': 'row2'}).fetchall() == [('row2',)]
+    assert cursor.execute(sql, {'test': 'row2'}).fetchall() == [ResultRow(("test",), ('row2',))]
     # also correct way, additional dict value should just be ignored
-    assert cursor.execute(sql, {'test': 'row2', 'd': 2}).fetchall() == \
-        [('row2',)]
+    assert cursor.execute(sql, {'test': 'row2', 'd': 2}).fetchall() == [ResultRow(("test",), ('row2',))]
+
 
 
 @pytest.mark.hanatest
 def test_cursor_insert_commit(connection, test_table_1):
     cursor = connection.cursor()
     cursor.execute("SELECT COUNT(*) FROM %s" % TABLE)
-    assert cursor.fetchone() == (0,)
+    assert cursor.fetchone() == ResultRow((), (0,))
 
     cursor.execute("INSERT INTO %s VALUES('Hello World')" % TABLE)
     assert cursor.rowcount == 1
 
     cursor.execute("SELECT COUNT(*) FROM %s" % TABLE)
-    assert cursor.fetchone() == (1,)
+    assert cursor.fetchone() == ResultRow((), (1,))
     connection.commit()
 
 
@@ -260,7 +270,7 @@ def test_cursor_executemany_python_expansion(connection, test_table_1):
 
     cursor.execute("SELECT * FROM %s" % TABLE)
     result = cursor.fetchall()
-    assert result == [('Statement 1',), ('Statement 2',)]
+    assert result == [ResultRow((), ('Statement 1',)), ResultRow((), ('Statement 2',))]
 
 
 @pytest.mark.hanatest
@@ -277,7 +287,7 @@ def test_cursor_executemany_hana_expansion(connection, test_table_1):
 
     cursor.execute("SELECT * FROM %s" % TABLE)
     result = cursor.fetchall()
-    assert result == [('Statement 1',), ('Statement 2',)]
+    assert result == [ResultRow((), ('Statement 1',)), ResultRow((), ('Statement 2',))]
 
 @pytest.mark.hanatest
 def test_IntegrityError_on_unique_constraint_violation(connection, test_table_1):
@@ -295,4 +305,4 @@ def test_prepared_decimal(connection, test_table_2):
 
     cursor.execute("SELECT * FROM PYHDB_TEST_2")
     result = cursor.fetchall()
-    assert result == [(Decimal("3.14159265359"),)]
+    assert result == [ResultRow(("test",), (Decimal("3.14159265359"),))]
