@@ -111,7 +111,7 @@ class IncrementalEncoder(codecs.BufferedIncrementalEncoder):
 
     def _buffer_encode_step(self, char, errors, final):
         codepoint = ord(char)
-        if codepoint < 65535:
+        if codepoint <= 65535:
             return codecs.utf_8_encode(char, errors)
         else:
             seq = bytearray(6)
