@@ -1,6 +1,10 @@
 Changelog
 =========
 
+0.3.5.dev
+---------
+- Fixed various problems in decoding and encoding of CESU-8 (#102)
+
 0.3.4
 -----
 - Fixed parameters tuple access with unicode index (#98)
