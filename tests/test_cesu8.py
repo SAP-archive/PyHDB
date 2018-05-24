@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright 2014, 2015 SAP SE.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -82,3 +84,9 @@ def test_cesu8_and_utf8_mixed_encode():
               b"\xcf\x86\xce\xaf\xce\xb4\xce\xb9"
     assert u'\U0001f40d is a \u03c6\u03af\u03b4\u03b9'.encode('cesu-8') == \
         encoded
+
+def test_cesu8_and_utf8_mixed_encode_decode():
+    unicode_input = u'Some normal text with 😊 and other emojis like 🤔 or 🤖'
+    cesu8_encoded = unicode_input.encode('cesu-8')
+    decoded_unicode = cesu8_encoded.decode('cesu-8')
+    assert decoded_unicode == unicode_input

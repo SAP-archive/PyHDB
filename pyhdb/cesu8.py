@@ -15,6 +15,9 @@
 import codecs
 from pyhdb.compat import PY2, unichr
 
+SURROGATE_IDENTICATOR_INT = 0xED
+SURROGATE_IDENTICATOR_BYTE = b'\xed'
+
 
 class IncrementalDecoder(codecs.BufferedIncrementalDecoder):
     # Decoder inspired by python-ftfy written by Rob Speer
@@ -25,9 +28,7 @@ class IncrementalDecoder(codecs.BufferedIncrementalDecoder):
         position = 0
 
         while True:
-            decoded, consumed = self._buffer_decode_step(
-                input[position:], errors, final
-            )
+            decoded, consumed = self._buffer_decode_step(input[position:], errors, final)
 
             if consumed == 0:
                 break
@@ -42,19 +43,27 @@ class IncrementalDecoder(codecs.BufferedIncrementalDecoder):
 
     def _buffer_decode_step(self, input, errors, final):
         # If begin of CESU-8 sequence
-        if input.startswith(b'\xed'):
+        if input.startswith(SURROGATE_IDENTICATOR_BYTE):
             if len(input) < 6:
-                if final:
-                    # There aren't six bytes to decode.
-                    return codecs.utf_8_decode(input, errors, final)
-                else:
+                if not final:
                     # Stream is not done yet
                     return u'', 0
-            elif input[3] == 237 or (PY2 and input[3] == b"\xed"):
-                if PY2:
-                    bytenums = [ord(b) for b in input[:6]]
-                else:
-                    bytenums = input
+
+                # As there are less than six bytes it can't be a CESU-8 surrogate
+                # but probably a UTF-8 byte sequence
+                return codecs.utf_8_decode(input, errors, final)
+
+            if PY2:
+                bytenums = [ord(b) for b in input[:6]]
+            else:
+                bytenums = input
+
+            # Verify that the 6 bytes are in possible range of a CESU-8 surrogate
+            if bytenums[1] >= 0xa0 and bytenums[1] <= 0xbf and \
+               bytenums[2] >= 0x80 and bytenums[2] <= 0xbf and \
+               bytenums[3] == SURROGATE_IDENTICATOR_INT and \
+               bytenums[4] >= 0xb0 and bytenums[4] <= 0xbf and \
+               bytenums[5] >= 0x80 and bytenums[5] <= 0xbf:
 
                 codepoint = (
                     ((bytenums[1] & 0x0f) << 16) +
@@ -65,7 +74,15 @@ class IncrementalDecoder(codecs.BufferedIncrementalDecoder):
                 )
                 return unichr(codepoint), 6
 
-        # Fallback to UTF-8
+            # No CESU-8 surrogate but probably a 3 byte UTF-8 sequence
+            return codecs.utf_8_decode(input[:3], errors, final)
+
+        cesu8_surrogate_start = input.find(SURROGATE_IDENTICATOR_BYTE)
+        if cesu8_surrogate_start > 0:
+            # Decode everything until start of cesu8 surrogate pair
+            return codecs.utf_8_decode(input[:cesu8_surrogate_start], errors, final)
+
+        # No sign of CESU-8 encoding
         return codecs.utf_8_decode(input, errors, final)
 
 
