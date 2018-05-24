@@ -15,6 +15,9 @@
 # language governing permissions and limitations under the License.
 
 import pytest
+from hypothesis import given, settings
+import hypothesis.strategies as st
+
 import pyhdb.cesu8  # import required to register cesu8 encoding
 
 
@@ -90,3 +93,8 @@ def test_cesu8_and_utf8_mixed_encode_decode():
     cesu8_encoded = unicode_input.encode('cesu-8')
     decoded_unicode = cesu8_encoded.decode('cesu-8')
     assert decoded_unicode == unicode_input
+
+@given(text_input=st.text())
+@settings(max_examples=500)
+def test_encode_decode_idempotent(text_input):
+    assert text_input.encode('cesu-8').decode('cesu-8') == text_input
