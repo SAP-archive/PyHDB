@@ -1,2 +1,2 @@
-pytest>=2.5.2
-mock>=1.0.1
+pytest>=3.6.0
+mock>=2.0.0
