@@ -3,7 +3,7 @@ SAP HANA Database Client for Python
 
 A pure Python client for the SAP HANA Database based on the `SAP HANA Database SQL Command Network Protocol <http://help.sap.com/hana/SAP_HANA_SQL_Command_Network_Protocol_Reference_en.pdf>`_.
 
-pyhdb supports Python 2.7, 3.3, 3.4, 3.5 and also PyPy on Linux, OSX and Windows. It implements a large part of the `DBAPI Specification v2.0 (PEP 249) <http://legacy.python.org/dev/peps/pep-0249/>`_. We plan to support Python 2.6 again in the future.
+pyhdb supports Python 2.7, 3.3, 3.4, 3.5, 3.6 and also PyPy on Linux, OSX and Windows. It implements a large part of the `DBAPI Specification v2.0 (PEP 249) <http://legacy.python.org/dev/peps/pep-0249/>`_.
 
 Table of contents
 -----------------
