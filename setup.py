@@ -41,10 +41,6 @@ setup(
     long_description=get_long_description(),
     packages=find_packages(exclude=("tests", "tests.*",)),
     zip_safe=False,
-    tests_require=[
-        "pytest>=2.5.2",
-        "mock>=1.0.1"
-    ],
     classifiers=[  # http://pypi.python.org/pypi?%3Aaction=list_classifiers
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',

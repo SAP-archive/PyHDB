@@ -6,6 +6,8 @@ python:
   - "3.4"
   - "3.5"
 install:
+  - pip install -U pip setuptools wheel
+  - pip install -r requirements-tests.txt
   - pip install -e .
 script:
   - py.test -v
