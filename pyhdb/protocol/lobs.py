@@ -234,7 +234,7 @@ class Clob(_CharLob):
 
     def __unicode__(self):
         """Convert lob into its unicode format"""
-        return self.data.getvalue().decode(self.encoding, errors='ignore')
+        return self.data.getvalue().decode(self.encoding)
 
     def _init_io_container(self, init_value):
         """Initialize container to hold lob data.
