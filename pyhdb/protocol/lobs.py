@@ -20,6 +20,7 @@ from pyhdb.protocol.segments import RequestSegment
 from pyhdb.protocol.constants import message_types, type_codes
 from pyhdb.protocol.parts import ReadLobRequest
 from pyhdb.compat import PY2, PY3, byte_type
+from pyhdb import cesu8
 
 if PY2:
     # Depending on the Python version we use different underlying containers for CLOB strings
@@ -257,7 +258,7 @@ class Clob(_CharLob):
 class NClob(_CharLob):
     """Instance of this class will be returned for a NCLOB object in a db result"""
     type_code = type_codes.NCLOB
-    encoding = 'utf8'
+    encoding = cesu8
 
     def __unicode__(self):
         """Convert lob into its unicode format"""
@@ -269,9 +270,9 @@ class NClob(_CharLob):
 
         if PY2 and isinstance(init_value, str):
             # io.String() only accepts unicode values, so do necessary conversion here:
-            init_value = init_value.decode(self.encoding)
+            init_value = cesu8.decode(init_value)
         if PY3 and isinstance(init_value, byte_type):
-            init_value = init_value.decode(self.encoding)
+            init_value = cesu8.decode(init_value)
 
         return io.StringIO(init_value)
 
