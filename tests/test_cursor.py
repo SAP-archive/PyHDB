@@ -13,6 +13,7 @@
 # language governing permissions and limitations under the License.
 
 import pytest
+import struct
 from decimal import Decimal
 
 from pyhdb.cursor import format_operation
@@ -279,6 +280,38 @@ def test_cursor_executemany_hana_expansion(connection, test_table_1):
     result = cursor.fetchall()
     assert result == [('Statement 1',), ('Statement 2',)]
 
+
+@pytest.mark.hanatest
+def test_cursor_create_drop_statement(connection, test_table_1):
+    cursor = connection.cursor()
+    sql_check = """
+        SELECT statement_string
+        FROM M_PREPARED_STATEMENTS
+        WHERE statement_id = %s
+    """
+    sql = "INSERT INTO %s VALUES(?)" % TABLE
+
+    # create statement
+    psid = cursor.prepare(sql)
+
+    # check if statement was created
+    # somehow HANA does not accept the statement id as parameter
+    # so we will use the python format string
+    psid_unpacked = struct.unpack("L", psid)[0]
+    cursor.execute(sql_check % psid_unpacked)
+    result = cursor.fetchall()
+    assert len(result) == 1
+    assert result[0][0].getvalue() == sql
+
+    # drop statement
+    cursor.drop_prepared(psid)
+
+    # check if statement was dropped
+    cursor.execute(sql_check, [(psid_unpacked,)])
+    result = cursor.fetchall()
+    assert len(result) == 0
+
+
 @pytest.mark.hanatest
 def test_IntegrityError_on_unique_constraint_violation(connection, test_table_1):
     cursor = connection.cursor()
@@ -287,6 +320,7 @@ def test_IntegrityError_on_unique_constraint_violation(connection, test_table_1)
     cursor.execute("INSERT INTO %s VALUES('Value 1')" % TABLE)
     with pytest.raises(IntegrityError):
         cursor.execute("INSERT INTO %s VALUES('Value 1')" % TABLE)
+
 
 @pytest.mark.hanatest
 def test_prepared_decimal(connection, test_table_2):

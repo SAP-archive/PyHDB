@@ -125,6 +125,7 @@ class Cursor(object):
         self.rownumber = None
         self.arraysize = 1
         self._prepared_statements = {}
+        self._last_statement_id_executemany = None
 
     @property
     def prepared_statement_ids(self):
@@ -166,6 +167,26 @@ class Cursor(object):
         self._prepared_statements[statement_id] = PreparedStatement(self.connection, statement_id,
                                                                     params_metadata, result_metadata_part)
         return statement_id
+
+    def drop_prepared(self, statement_id):
+        """Drop SQL statement in HANA
+        :param statement; a valid SQL statement
+        """
+        self._check_closed()
+        if statement_id not in self.prepared_statement_ids:
+            return
+
+        request = RequestMessage.new(
+            self.connection,
+            RequestSegment(
+                message_types.DROP_STATEMENT_ID,
+                StatementId(statement_id)
+            )
+        )
+        response = self.connection.send_request(request)
+        del self._prepared_statements[statement_id]
+        if statement_id == self._last_statement_id_executemany:
+            self._last_statement_id_executemany = None
 
     def execute_prepared(self, prepared_statement, multi_row_parameters):
         """
@@ -282,6 +303,10 @@ class Cursor(object):
             # Continue with Hana style statement execution:
             prepared_statement = self.get_prepared_statement(statement_id)
             self.execute_prepared(prepared_statement, parameters)
+            if self._last_statement_id_executemany is not None:
+                self.drop_prepared(self._last_statement_id_executemany)
+                self._last_statement_id_executemany = statement_id
+
         # Return cursor object:
         return self
 
