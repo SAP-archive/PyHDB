@@ -12,6 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-MAX_MESSAGE_SIZE = 2**17
+MAX_MESSAGE_SIZE = 2**20
 MESSAGE_HEADER_SIZE = 32  # this will be verified on 'Message'-class creation
 MAX_SEGMENT_SIZE = MAX_MESSAGE_SIZE - MESSAGE_HEADER_SIZE

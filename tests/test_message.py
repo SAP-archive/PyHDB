@@ -110,7 +110,7 @@ class TestRequestRequestMessage(object):
         assert packed[12:16] == b"\x0A\x00\x00\x00"
 
         # var part size
-        assert packed[16:20] == b"\xE0\xFF\x01\x00"
+        assert packed[16:20] == b"\xE0\xFF\x0F\x00"
 
         # no of segments
         assert packed[20:22] == b"\x01\x00"
