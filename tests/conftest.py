@@ -26,13 +26,17 @@ def _get_option(config, key):
     return config.getoption(key) or config.inicfg.get(key)
 
 
-@pytest.fixture(scope="session")
-def hana_system():
+def _hana_system():
     host = _get_option(pytest.config, 'hana_host')
     port = _get_option(pytest.config, 'hana_port') or 30015
     user = _get_option(pytest.config, 'hana_user')
     password = _get_option(pytest.config, 'hana_password')
     return HANASystem(host, port, user, password)
+
+
+@pytest.fixture(scope="session")
+def hana_system():
+    return _hana_system()
 
 
 @pytest.fixture()
@@ -78,7 +82,7 @@ def pytest_addoption(parser):
 
 
 def pytest_report_header(config):
-    hana = hana_system()
+    hana = _hana_system()
     if hana.host is None:
         return [
             "WARNING: No SAP HANA host defined for integration tests"
@@ -98,6 +102,6 @@ def pytest_runtest_setup(item):
         if item.config.getoption("--no-hana"):
             pytest.skip("Test requires SAP HANA system are omitted due to command line option")
         else:
-            hana = hana_system()
+            hana = _hana_system()
             if hana.host is None:
                 pytest.skip("Test requires SAP HANA system")
