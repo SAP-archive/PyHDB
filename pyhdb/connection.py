@@ -18,6 +18,7 @@ import socket
 import struct
 import threading
 import logging
+import ssl
 ###
 from pyhdb.auth import AuthManager
 from pyhdb.cursor import Cursor
@@ -40,7 +41,7 @@ class Connection(object):
     """
     Database connection class
     """
-    def __init__(self, host, port, user, password, autocommit=False, timeout=None):
+    def __init__(self, host, port, user, password, autocommit=False, encrypt=False, encrypt_verify=None, timeout=None):
         self.host = host
         self.port = port
         self.user = user
@@ -48,6 +49,9 @@ class Connection(object):
         self.autocommit = autocommit
         self.product_version = None
         self.protocol_version = None
+
+        self.encrypt = encrypt
+        self.encrypt_verify = encrypt_verify
 
         self.session_id = -1
         self.packet_count = -1
@@ -62,8 +66,22 @@ class Connection(object):
     def __repr__(self):
         return '<Hana connection host=%s port=%s user=%s>' % (self.host, self.port, self.user)
 
-    def _open_socket_and_init_protocoll(self):
+    def _open_socket_and_init_protocol(self):
+        # Create socket
         self._socket = socket.create_connection((self.host, self.port), self._timeout)
+
+        # Wrap socket if encrypt is enabled
+        if self.encrypt:
+            # Create SSL context
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+            if self.encrypt_verify is None:
+                context.verify_mode = ssl.CERT_OPTIONAL
+            elif self.encrypt_verify:
+                context.verify_mode = ssl.CERT_REQUIRED
+            elif not self.encrypt_verify:
+                context.verify_mode = ssl.CERT_NONE
+
+            self._socket = context.wrap_socket(self._socket, server_hostname=self.host)
 
         # Initialization Handshake
         self._socket.sendall(INITIALIZATION_BYTES)
@@ -134,7 +152,7 @@ class Connection(object):
                 # Socket already established
                 return
 
-            self._open_socket_and_init_protocoll()
+            self._open_socket_and_init_protocol()
 
             # Perform the authenication handshake and get the part
             # with the agreed authentication data
