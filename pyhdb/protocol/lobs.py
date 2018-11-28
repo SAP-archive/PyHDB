@@ -73,10 +73,17 @@ class Lob(object):
     def from_payload(cls, payload_data, lob_header, connection):
         enc_payload_data = cls._decode_lob_data(payload_data)
         return cls(enc_payload_data, lob_header, connection)
-
+    
     @classmethod
     def _decode_lob_data(cls, payload_data):
-        return payload_data.decode(cls.encoding) if cls.encoding else payload_data
+        try:
+            tmp = payload_data.decode(cls.encoding) if cls.encoding else payload_data
+        except Exception:
+            # make same length of input
+            tmp = ''.join([' ' for _ in range(len(payload_data))]).encode()
+            tmp = tmp.decode(cls.encoding) if cls.encoding else payload_data
+        return tmp
+
 
     def __init__(self, init_value='', lob_header=None, connection=None):
         self.data = self._init_io_container(init_value)
