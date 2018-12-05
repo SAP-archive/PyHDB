@@ -248,15 +248,13 @@ class Error(Part):
     def unpack_data(cls, argument_count, payload):
         errors = []
         for _ in iter_range(argument_count):
-            buff = payload.read(cls.part_struct.size)
-            if len(buff) == cls.part_struct.size:
-                code, position, textlength, level, sqlstate = cls.part_struct.unpack(buff)
-                errortext = payload.read(textlength+4)[0:-4].decode('utf-8', 'ignore')
-                if code == 301:
-                    # Unique constraint violated
-                    errors.append(IntegrityError(errortext, code))
-                else:
-                    errors.append(DatabaseError(errortext, code))
+            code, position, textlength, level, sqlstate = cls.part_struct.unpack(payload.read(cls.part_struct.size))
+            errortext = payload.read(textlength+4)[0:-4].decode('utf-8', 'ignore')
+            if code == 301:
+                # Unique constraint violated
+                errors.append(IntegrityError(errortext, code))
+            else:
+                errors.append(DatabaseError(errortext, code))
         return tuple(errors),
 
 
