@@ -147,7 +147,7 @@ class ReplySegment(BaseSegment):
             elif segment_header.segment_kind == segment_kinds.ERROR:
                 error = segment
                 if error.parts[0].kind == part_kinds.ROWSAFFECTED:
-                    raise Exception("Rows affected %s" % (error.parts[0].values,))
+                    raise Exception("Rows affected %s" % (error.parts[1].errors,))
                 elif error.parts[0].kind == part_kinds.ERROR:
                     raise error.parts[0].errors[0]
             else:
