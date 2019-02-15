@@ -139,6 +139,7 @@ LOBs
 ^^^^
 
 Three different types of LOBs are supported and corresponding LOB classes have been implemented:
+
 * Blob - binary LOB data
 * Clob - string LOB data containing only ascii characters
 * NClob - string (unicode for Python 2.x) LOB data containing any valid unicode character
