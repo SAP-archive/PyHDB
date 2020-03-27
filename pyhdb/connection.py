@@ -62,6 +62,12 @@ class Connection(object):
     def __repr__(self):
         return '<Hana connection host=%s port=%s user=%s>' % (self.host, self.port, self.user)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.close()
+
     def _open_socket_and_init_protocoll(self):
         self._socket = socket.create_connection((self.host, self.port), self._timeout)
 
