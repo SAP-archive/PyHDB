@@ -96,11 +96,15 @@ def pytest_report_header(config):
 
 
 def pytest_runtest_setup(item):
-    for hana_marker in item.iter_markers("hanatest"):
-        if hana_marker is not None:
-            if item.config.getoption("--no-hana"):
-                pytest.skip("Test requires SAP HANA system are omitted due to command line option")
-            else:
-                hana = hana_system_with_config(item.config)
-                if hana.host is None:
-                    pytest.skip("Test requires SAP HANA system")
+    try:
+        hana_marker = item.get_closest_marker("hanatest")
+    except AttributeError:
+        hana_marker = item.get_marker("hanatest")
+
+    if hana_marker is not None:
+        if item.config.getoption("--no-hana"):
+            pytest.skip("Test requires SAP HANA system are omitted due to command line option")
+        else:
+            hana = hana_system_with_config(item.config)
+            if hana.host is None:
+                pytest.skip("Test requires SAP HANA system")
