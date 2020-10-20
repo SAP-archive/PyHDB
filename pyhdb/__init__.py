@@ -23,6 +23,10 @@ apilevel = "2.0"
 threadsafety = 2
 paramstyle = "numeric"
 tracing = os.environ.get('HDB_TRACE', 'FALSE').upper() in ('TRUE', '1')
+source_location = os.path.abspath(os.path.dirname(__file__))
+
+with open(os.path.join(source_location, "..", "VERSION")) as version:
+    __version__ = version.readline().strip()
 
 
 def connect(host, port, user, password, autocommit=False):
