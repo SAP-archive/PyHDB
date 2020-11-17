@@ -25,8 +25,8 @@ paramstyle = "numeric"
 tracing = os.environ.get('HDB_TRACE', 'FALSE').upper() in ('TRUE', '1')
 
 
-def connect(host, port, user, password, autocommit=False):
-    conn = Connection(host, port, user, password, autocommit)
+def connect(host, port, user, password, autocommit=False, data_format_version2 = False):
+    conn = Connection(host, port, user, password, autocommit, data_format_version2 = data_format_version2)
     conn.connect()
     return conn
 

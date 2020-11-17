@@ -91,8 +91,17 @@ class NoneType(Type):
     @classmethod
     def prepare(cls, type_code):
         """Prepare a binary NULL value for given type code"""
-        # This is achieved by setting the MSB of the type_code byte to 1
-        return struct.pack('<B', type_code | 0x80)
+        
+        if type_code != type_codes.SECONDTIME:
+            # This is achieved by setting the MSB of the type_code byte to 1
+            return struct.pack('<B', type_code | 0x80)
+        else:
+            # Apparently, SECONDTIME(64) has special null value
+
+            pfield = struct.pack('b', type_code)
+            pfield += struct.Struct("<L").pack(86401)
+
+            return(pfield)
 
 
 class _IntType(Type):
@@ -307,11 +316,65 @@ class MixinStringType(object):
 class String(Type, MixinStringType):
 
     type_code = (type_codes.CHAR, type_codes.VARCHAR, type_codes.NCHAR, type_codes.NVARCHAR,
-                 type_codes.STRING, type_codes.NSTRING)
+                 type_codes.STRING, type_codes.NSTRING
+                 , type_codes.SHORTTEXT)
     python_type = string_types
 
     ESCAPE_REGEX = re.compile(r"[\']")
     ESCAPE_MAP = {"'": "''"}
+
+    @classmethod
+    def to_sql(cls, value):
+        return "'%s'" % cls.ESCAPE_REGEX.sub(
+            lambda match: cls.ESCAPE_MAP.get(match.group(0)),
+            value
+        )
+
+class Alphanum(Type):
+
+    type_code = type_codes.ALPHANUM
+    
+    python_type = string_types
+
+    ESCAPE_REGEX = re.compile(r"[\']")
+    ESCAPE_MAP = {"'": "''"}
+
+    @classmethod
+    def from_resultset(cls, payload, connection=None):
+
+        length = struct.unpack('B', payload.read(1))[0]
+
+        if length == 255:
+            return None
+
+        val_len = struct.unpack('B', payload.read(1))[0]
+            
+        val =  payload.read(length - 1).decode('cesu-8') # ascii ?
+        
+        if val_len & 128: # numeric to be filled with zeroes
+            val_len &= 127
+            val = val.zfill(val_len)
+        
+        return val
+        
+    @classmethod
+    def prepare(cls, value):
+    
+        pfield = struct.pack('b', cls.type_code)
+
+        if isinstance(value, int):
+            raise InterfaceError("INT is not compatible with ALPHANUM")
+                
+        value = value.encode('cesu-8')
+        length = len(value) 
+        
+        if length > 127:
+            raise InterfaceError("ALPHANUM value cannot be longer 127 characters: %s... (%i bytes)" % (str(value[:16]), length))
+
+        pfield += struct.pack('b', len(value))
+        pfield += value
+            
+        return pfield
 
     @classmethod
     def to_sql(cls, value):
@@ -486,7 +549,197 @@ class Timestamp(Type):
         pfield += cls._struct.pack(year, month, value.day, hour, value.minute, millisecond)
         return pfield
 
+class Longdate(Type):
 
+    type_code = type_codes.LONGDATE
+    python_type = datetime.datetime
+    _struct = struct.Struct("<Q")
+
+    @classmethod
+    def from_resultset(cls, payload, connection=None):
+    
+        [microsec] = cls._struct.unpack(payload.read(8))
+        
+        if microsec == 3155380704000000001:
+            return None
+            
+        microsec = microsec // 10
+        
+        second, microsec = divmod(microsec, 1000000)
+        
+        date, time = divmod(second, 60*60*24)
+        
+        hours, seconds = divmod(time, 60*60)
+        minutes, seconds  = divmod(seconds, 60)
+        
+        date = datetime.date.fromordinal(date - 1)
+        time = datetime.time(hours, minutes, seconds, microsec)
+                
+        return datetime.datetime.combine(date, time)
+
+    @classmethod
+    def to_sql(cls, value):
+        return "'%s'" % value.isoformat(' ')
+
+    @classmethod
+    def prepare(cls, value):
+        """Pack datetime value into proper binary format"""
+        pfield = struct.pack('b', cls.type_code)
+        
+        if value is None:
+            val = 3155380704000000001
+            pfield += cls._struct.pack(val)
+            return pfield
+        
+        if isinstance(value, string_types):
+            # implicit casting from 
+            if "." in value:
+                value = datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S.%f")
+            else:
+                value = datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+
+        date = datetime.date.toordinal(value.date()) + 1
+        
+        (hours, minutes, seconds, microseconds) = (value.hour, value.minute, value.second, value.microsecond)
+        
+        time = ((((hours * 60) + minutes) * 60 + seconds ) * 1000000 + microseconds) * 10 + 1# microseconds since midnight
+
+        val = date * 60*60*24*10000000 + time
+        
+        pfield += cls._struct.pack(val)
+        return pfield
+
+class Seconddate(Type):
+
+    type_code = type_codes.SECONDDATE
+    python_type = datetime.datetime
+    _struct = struct.Struct("<Q")
+
+    @classmethod
+    def from_resultset(cls, payload, connection=None):
+    
+        [second] = cls._struct.unpack(payload.read(8))
+        
+        if second == 315538070401:
+            return None
+
+        second -= 1
+            
+        date, time = divmod(second, 60*60*24)
+        
+        hours, seconds = divmod(time, 60*60)
+        minutes, seconds  = divmod(seconds, 60)
+        
+        date = datetime.date.fromordinal(date - 1)
+        time = datetime.time(hours, minutes, seconds)
+        
+        return datetime.datetime.combine(date, time)
+
+    @classmethod
+    def to_sql(cls, value):
+        return "'%s'" % value.isoformat(' ', 'seconds')
+
+    @classmethod
+    def prepare(cls, value):
+        """Pack datetime value into proper binary format"""
+        
+        pfield = struct.pack('b', cls.type_code)
+        
+        if isinstance(value, string_types):
+            # implicit casting from 
+            value = datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+
+        date = datetime.date.toordinal(value.date()) + 1
+        
+        (hours, minutes, seconds) = (value.hour, value.minute, value.second)
+        
+        time = (((hours * 60) + minutes) * 60 + seconds ) + 1 # seconds since midnight
+
+        val = date * 60*60*24 + time
+        
+        pfield += cls._struct.pack(val)
+        
+        return pfield
+
+class Daydate(Type):
+
+    type_code = type_codes.DAYDATE
+    python_type = datetime.date
+    _struct = struct.Struct("<L")
+
+    @classmethod
+    def from_resultset(cls, payload, connection=None):
+    
+        [day] = cls._struct.unpack(payload.read(4))
+        
+        if day == 3652062:
+            return None
+            
+        date = datetime.date.fromordinal(day - 2) # python uses 737425 while SAP HANA substracts 1721423
+        
+        return date
+
+    @classmethod
+    def to_sql(cls, value):
+        return "'%s'" % value.isoformat()
+
+    @classmethod
+    def prepare(cls, value):
+        """Pack date value into proper binary format"""
+        
+        pfield = struct.pack('b', cls.type_code)
+        
+        if isinstance(value, string_types):
+            # implicit casting from 
+            value = datetime.datetime.strptime(value, "%Y-%m-%d")
+
+        day = datetime.date.toordinal(value) + 2
+        
+        pfield += cls._struct.pack(day)
+        
+        return pfield
+
+class Secondtime(Type):
+
+    type_code = type_codes.SECONDTIME
+    python_type = datetime.time
+    _struct = struct.Struct("<L")
+
+    @classmethod
+    def from_resultset(cls, payload, connection=None):
+    
+        [second] = cls._struct.unpack(payload.read(4))
+        
+        second -= 1
+
+        if second == 86401:
+            return None
+        
+        hours, seconds = divmod(second, 60*60)
+        minutes, seconds  = divmod(seconds, 60)
+        
+        return datetime.time(hours, minutes, seconds)
+
+    @classmethod
+    def to_sql(cls, value):
+        return "'%s'" % value.isoformat()
+
+    @classmethod
+    def prepare(cls, value):
+        """Pack date value into proper binary format"""
+        
+        pfield = struct.pack('b', cls.type_code)
+        
+        if isinstance(value, string_types):
+            # implicit casting from 
+            value = datetime.datetime.strptime(value, "%H:%M:%S")
+            
+        seconds = (value.hour * 60 + value.minute) * 60 + value.second
+            
+        pfield += cls._struct.pack(seconds + 1)
+        
+        return pfield
+        
 class MixinLobType(object):
     """Mixin class for all LOB types"""
     type_code = None
@@ -523,6 +776,15 @@ class ClobType(Type, MixinLobType):
 class NClobType(Type, MixinLobType):
     """NCLOB type class"""
     type_code = type_codes.NCLOB
+
+    @classmethod
+    def encode_value(cls, value):
+        """Return value if it is a string, otherwise properly encode unicode to binary unicode string"""
+        return value.encode('utf8') if isinstance(value, text_type) else value
+
+class TextType(Type, MixinLobType):
+    """Text type class"""
+    type_code = type_codes.TEXT
 
     @classmethod
     def encode_value(cls, value):
