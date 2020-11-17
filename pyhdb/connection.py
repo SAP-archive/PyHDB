@@ -40,11 +40,11 @@ class Connection(object):
     """
     Database connection class
     """
-    def __init__(self, host, port, user, password, autocommit=False, timeout=None):
+    def __init__(self, host, port, user, password, autocommit=False, timeout=None, data_format_version2 = False):
         self.host = host
         self.port = port
         self.user = user
-
+        
         self.autocommit = autocommit
         self.product_version = None
         self.protocol_version = None
@@ -54,6 +54,8 @@ class Connection(object):
 
         self._socket = None
         self._timeout = timeout
+        
+        self._data_format_version2 = data_format_version2
         self._auth_manager = AuthManager(self, user, password)
         # It feels like the RLock has a poorer performance
         self._socket_lock = threading.RLock()
@@ -140,6 +142,12 @@ class Connection(object):
             # with the agreed authentication data
             agreed_auth_part = self._auth_manager.perform_handshake()
 
+
+            connect_opt = DEFAULT_CONNECTION_OPTIONS.copy()
+            
+            if self._data_format_version2:
+                connect_opt['data_format_version2'] = 4
+
             request = RequestMessage.new(
                 self,
                 RequestSegment(
@@ -149,7 +157,7 @@ class Connection(object):
                         ClientId(
                             "pyhdb-%s@%s" % (os.getpid(), socket.getfqdn())
                         ),
-                        ConnectOptions(DEFAULT_CONNECTION_OPTIONS)
+                        ConnectOptions(connect_opt)
                     )
                 )
             )

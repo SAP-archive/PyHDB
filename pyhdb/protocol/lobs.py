@@ -280,4 +280,5 @@ LOB_TYPE_CODE_MAP = {
     type_codes.BLOB: Blob,
     type_codes.CLOB: Clob,
     type_codes.NCLOB: NClob,
+    type_codes.TEXT: NClob,
 }
