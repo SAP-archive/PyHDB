@@ -78,7 +78,7 @@ class AuthManager(object):
 
         key = hashlib.sha256(
             hmac.new(
-                self.password.encode('cesu-8'), salt, hashlib.sha256
+                self.password.encode('cesu8'), salt, hashlib.sha256
             ).digest()
         ).digest()
         key_hash = hashlib.sha256(key).digest()

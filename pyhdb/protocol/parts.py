@@ -45,7 +45,7 @@ class Fields(object):
         payload = struct.pack('<H', len(fields))
         for field in fields:
             if is_text(field):
-                field = field.encode('cesu-8')
+                field = field.encode('cesu8')
 
             size = len(field)
             if size >= 250:
@@ -168,13 +168,13 @@ class Command(Part):
         self.sql_statement = sql_statement
 
     def pack_data(self, remaining_size):
-        payload = self.sql_statement.encode('cesu-8')
+        payload = self.sql_statement.encode('cesu8')
         return 1, payload
 
     @classmethod
     def unpack_data(cls, argument_count, payload):
         sql_statement = payload.read()
-        return sql_statement.decode('cesu-8')
+        return sql_statement.decode('cesu8')
 
 
 class ResultSet(Part):

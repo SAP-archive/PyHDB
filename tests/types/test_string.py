@@ -37,13 +37,13 @@ def test_unpack_string(given, expected):
 
 def test_unpack_long_string():
     text = u'%030x' % random.randrange(16**300)
-    given = BytesIO(b"\xF6\x2C\x01" + text.encode('cesu-8'))
+    given = BytesIO(b"\xF6\x2C\x01" + text.encode('cesu8'))
     assert types.String.from_resultset(given) == text
 
 
 def test_unpack_very_long_string():
     text = u'%030x' % random.randrange(16**30000)
-    given = BytesIO(b"\xF7\x30\x75\x00\x00" + text.encode('cesu-8'))
+    given = BytesIO(b"\xF7\x30\x75\x00\x00" + text.encode('cesu8'))
     assert types.String.from_resultset(given) == text
 
 
@@ -99,13 +99,13 @@ def test_pack_string(given, expected):
 def test_pack_long_string():
     text = b'\xe6\x9c\xb1' * 3500
     expected = b"\x08\xF6\x04\x29" + text
-    assert types.String.prepare(text.decode('cesu-8')) == expected
+    assert types.String.prepare(text.decode('cesu8')) == expected
 
 
 def test_pack_very_long_string():
     text = b'\xe6\x9c\xb1' * 35000
     expected = b"\x08\xF7\x28\x9a\x01\x00" + text
-    assert types.String.prepare(text.decode('cesu-8')) == expected
+    assert types.String.prepare(text.decode('cesu8')) == expected
 
 
 # #############################################################################################################

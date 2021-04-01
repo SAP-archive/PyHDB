@@ -29,7 +29,7 @@ import pyhdb.cesu8  # import required to register cesu8 encoding
     (b"\xed\xa0\xbf\xed\xbc\x84", u"\U0001FF04"),
 ])
 def test_pure_cesu8_decode(encoded, unicode_obj):
-    assert encoded.decode('cesu-8') == unicode_obj
+    assert encoded.decode('cesu8') == unicode_obj
 
 
 @pytest.mark.parametrize("encoded,unicode_obj", [
@@ -37,18 +37,18 @@ def test_pure_cesu8_decode(encoded, unicode_obj):
     (b"\xe2\xac\xa1", u"\u2b21"),
 ])
 def test_fallback_to_utf8_of_cesu8_decode(encoded, unicode_obj):
-    assert encoded.decode('cesu-8') == unicode_obj
+    assert encoded.decode('cesu8') == unicode_obj
 
 
 def test_multiple_chars_in_cesu8_decode():
     encoded = b"\xed\xa0\xbd\xed\xb0\x8d\xed\xa0\xbd\xed\xb1\x8d"
-    assert encoded.decode('cesu-8') == u'\U0001f40d\U0001f44d'
+    assert encoded.decode('cesu8') == u'\U0001f40d\U0001f44d'
 
 
 def test_cesu8_and_utf8_mixed_decode():
     encoded = b"\xed\xa0\xbd\xed\xb0\x8d\x20\x69\x73\x20\x61\x20" \
               b"\xcf\x86\xce\xaf\xce\xb4\xce\xb9"
-    assert encoded.decode('cesu-8') == \
+    assert encoded.decode('cesu8') == \
         u'\U0001f40d is a \u03c6\u03af\u03b4\u03b9'
 
 
@@ -63,7 +63,7 @@ def test_cesu8_and_utf8_mixed_decode():
     (b"\xed\xa0\xbf\xed\xbc\x84", u"\U0001FF04"),
 ])
 def test_pure_cesu8_encode(encoded, unicode_obj):
-    assert unicode_obj.encode('cesu-8') == encoded
+    assert unicode_obj.encode('cesu8') == encoded
 
 
 @pytest.mark.parametrize("encoded,unicode_obj", [
@@ -71,22 +71,22 @@ def test_pure_cesu8_encode(encoded, unicode_obj):
     (b"\xe2\xac\xa1", u"\u2b21"),
 ])
 def test_fallback_to_utf8_encode(encoded, unicode_obj):
-    assert unicode_obj.encode('cesu-8') == encoded
+    assert unicode_obj.encode('cesu8') == encoded
 
 
 def test_multiple_chars_in_cesu8_encode():
     encoded = b"\xed\xa0\xbd\xed\xb0\x8d\xed\xa0\xbd\xed\xb1\x8d"
-    assert u'\U0001f40d\U0001f44d'.encode('cesu-8') == encoded
+    assert u'\U0001f40d\U0001f44d'.encode('cesu8') == encoded
 
 
 def test_cesu8_and_utf8_mixed_encode():
     encoded = b"\xed\xa0\xbd\xed\xb0\x8d\x20\x69\x73\x20\x61\x20" \
               b"\xcf\x86\xce\xaf\xce\xb4\xce\xb9"
-    assert u'\U0001f40d is a \u03c6\u03af\u03b4\u03b9'.encode('cesu-8') == \
+    assert u'\U0001f40d is a \u03c6\u03af\u03b4\u03b9'.encode('cesu8') == \
         encoded
 
 def test_cesu8_and_utf8_mixed_encode_decode():
     unicode_input = u'Some normal text with 😊 and other emojis like 🤔 or 🤖'
-    cesu8_encoded = unicode_input.encode('cesu-8')
-    decoded_unicode = cesu8_encoded.decode('cesu-8')
+    cesu8_encoded = unicode_input.encode('cesu8')
+    decoded_unicode = cesu8_encoded.decode('cesu8')
     assert decoded_unicode == unicode_input

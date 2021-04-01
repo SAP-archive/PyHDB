@@ -277,7 +277,7 @@ class MixinStringType(object):
         length = MixinStringType.get_length(payload)
         if length is None:
             return None
-        return payload.read(length).decode('cesu-8')
+        return payload.read(length).decode('cesu8')
 
     @classmethod
     def prepare(cls, value, type_code=type_codes.CHAR):
@@ -289,7 +289,7 @@ class MixinStringType(object):
             if not isinstance(value, string_types):
                 # Value is provided e.g. as integer, but a string is actually required. Try proper casting into string:
                 value = text_type(value)
-            value = value.encode('cesu-8')
+            value = value.encode('cesu8')
             length = len(value)
             # length indicator
             if length <= 245:

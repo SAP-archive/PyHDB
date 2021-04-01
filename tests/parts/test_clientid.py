@@ -21,7 +21,7 @@ def test_pack_data():
     part = ClientId("bla@example.com")
     arguments, payload = part.pack_data(constants.MAX_SEGMENT_SIZE)
     assert arguments == 1
-    assert payload == "bla@example.com".encode('cesu-8')
+    assert payload == "bla@example.com".encode('cesu8')
 
 
 def test_unpack_data():

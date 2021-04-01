@@ -141,7 +141,7 @@ class StreamReader(codecs.StreamReader):
 
 
 CESU8_CODEC_INFO = codecs.CodecInfo(
-    name="cesu-8",
+    name="cesu8",
     encode=encode,
     decode=decode,
     incrementalencoder=IncrementalEncoder,
@@ -152,7 +152,7 @@ CESU8_CODEC_INFO = codecs.CodecInfo(
 
 
 def search_function(encoding):
-    if encoding == 'cesu-8':
+    if encoding == 'cesu8':
         return CESU8_CODEC_INFO
     else:
         return None
