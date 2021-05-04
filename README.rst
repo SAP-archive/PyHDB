@@ -1,14 +1,15 @@
-.. image:: https://img.shields.io/badge/STATUS-NOT%20CURRENTLY%20MAINTAINED-red.svg?longCache=true&style=flat
+SAP HANA Database Client for Python
+===================================
 
 Important Notice
 ----------------
 
+.. image:: https://img.shields.io/badge/STATUS-NOT%20CURRENTLY%20MAINTAINED-red.svg?longCache=true&style=flat
+
+
 This public repository is read-only and no longer maintained.
 
 The active maintained alternative is SAP HANA Python Client: https://pypi.org/project/hdbcli/
-
-SAP HANA Database Client for Python
-===================================
 
 A pure Python client for the SAP HANA Database based on the `SAP HANA Database SQL Command Network Protocol <http://help.sap.com/hana/SAP_HANA_SQL_Command_Network_Protocol_Reference_en.pdf>`_.
 
