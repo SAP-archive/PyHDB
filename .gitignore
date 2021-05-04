@@ -148,3 +148,4 @@ sftp-config.json
 
 # virtualfish
 .venv
+.vscode
